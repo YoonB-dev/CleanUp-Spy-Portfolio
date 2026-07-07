@@ -5,12 +5,13 @@ using UnityEngine.InputSystem;
 public class PlayerMovement : NetworkBehaviour
 {
     private CharacterController characterController;
-    private float moveSpeed = 5f;
+    private float moveSpeed = 8f;
     private float jumpForce = 2f;
     private float gravity = -9.81f * 2f;
     [SerializeField] private LayerMask groundLayer;
     private Vector2 serverMoveInput;
     private float verticalVelocity;
+
     private void Awake()
     {
         if (characterController == null)
@@ -21,10 +22,35 @@ public class PlayerMovement : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
-        if (IsServer)
+        if (!IsServer)
         {
-            transform.position = new Vector3(Random.Range(-3f, 3f), 2f, Random.Range(-3f, 3f));
+            return;
         }
+
+        PlayerSpawnManager.Instance?.RegisterPlayer(this);
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        if (!IsServer)
+        {
+            return;
+        }
+
+        PlayerSpawnManager.Instance?.UnregisterPlayer(this);
+    }
+
+    public void SetServerSpawnPosition(Vector3 spawnPosition)
+    {
+        if (!IsServer)
+        {
+            return;
+        }
+
+        characterController.enabled = false;
+        transform.position = spawnPosition;
+        characterController.enabled = true;
+        characterController.Move(Vector3.down * 0.01f);
     }
 
     private void Update()
