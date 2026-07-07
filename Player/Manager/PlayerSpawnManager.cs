@@ -11,8 +11,8 @@ public class PlayerSpawnManager : SceneSingleton<PlayerSpawnManager>
     [SerializeField] private Vector2 spawnRange = new(3f, 3f);
     [SerializeField] private float spawnHeight = 2f;
 
-    private readonly List<PlayerMovement> registeredPlayers = new();
-    public void RegisterPlayer(PlayerMovement playerMovement)
+    private readonly List<PlayerData> registeredPlayers = new();
+    public void RegisterPlayer(PlayerData playerMovement)
     {
         if (playerMovement == null || registeredPlayers.Contains(playerMovement))
         {
@@ -24,7 +24,7 @@ public class PlayerSpawnManager : SceneSingleton<PlayerSpawnManager>
         playerMovement.SetServerSpawnPosition(spawnPosition);
     }
 
-    public void UnregisterPlayer(PlayerMovement playerMovement)
+    public void UnregisterPlayer(PlayerData playerMovement)
     {
         if (playerMovement == null)
         {

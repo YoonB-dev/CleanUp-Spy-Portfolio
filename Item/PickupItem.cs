@@ -12,6 +12,12 @@ public class PickupItem : NetworkBehaviour
     private float carryHeight = -1.0f;
 
     private PlayerInteraction holder;
+    public override void OnNetworkDespawn()
+    {
+        base.OnNetworkDespawn();
+        // 서버에서 연결이 끊기면 모든 클라이언트에서 아이템을 비활성화 -> 바로 삭제되는 방식은 문제 발생할 수 있다고 해서 약간 방어적으로 작성함.
+        gameObject.SetActive(false);
+    }
 
     private void Awake()
     {

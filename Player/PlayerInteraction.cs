@@ -10,7 +10,8 @@ public class PlayerInteraction : NetworkBehaviour
     private readonly NetworkVariable<bool> isHoldingItem = new(
         false,
         NetworkVariableReadPermission.Everyone,
-        NetworkVariableWritePermission.Server);
+        NetworkVariableWritePermission.Server
+    );
 
     private PickupItem heldItem;
     private PickupItem hoveredItem;

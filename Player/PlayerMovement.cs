@@ -2,6 +2,9 @@ using UnityEngine;
 using Unity.Netcode;
 using UnityEngine.InputSystem;
 
+/// <summary>
+/// Player 움직임 관련 스크립트
+/// </summary>
 public class PlayerMovement : NetworkBehaviour
 {
     private CharacterController characterController;
@@ -18,39 +21,6 @@ public class PlayerMovement : NetworkBehaviour
         {
             characterController = GetComponent<CharacterController>();
         }
-    }
-
-    public override void OnNetworkSpawn()
-    {
-        if (!IsServer)
-        {
-            return;
-        }
-
-        PlayerSpawnManager.Instance?.RegisterPlayer(this);
-    }
-
-    public override void OnNetworkDespawn()
-    {
-        if (!IsServer)
-        {
-            return;
-        }
-
-        PlayerSpawnManager.Instance?.UnregisterPlayer(this);
-    }
-
-    public void SetServerSpawnPosition(Vector3 spawnPosition)
-    {
-        if (!IsServer)
-        {
-            return;
-        }
-
-        characterController.enabled = false;
-        transform.position = spawnPosition;
-        characterController.enabled = true;
-        characterController.Move(Vector3.down * 0.01f);
     }
 
     private void Update()
