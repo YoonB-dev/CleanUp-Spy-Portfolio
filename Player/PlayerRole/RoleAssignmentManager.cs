@@ -39,4 +39,17 @@ public class RoleAssignmentManager : SceneSingleton<RoleAssignmentManager>
             registeredPlayers.RemoveAt(index);
         }
     }
+
+    public bool IsMafia(ulong clientId)
+    {
+        foreach (var roleManager in registeredPlayers)
+        {
+            if (roleManager.OwnerClientId == clientId && roleManager.CurrentRole == PlayerRole.Mafia)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

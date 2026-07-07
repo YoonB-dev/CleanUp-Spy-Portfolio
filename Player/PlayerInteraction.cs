@@ -6,7 +6,7 @@ public class PlayerInteraction : NetworkBehaviour
 {
     [SerializeField] private Camera playerCamera;
     [SerializeField] private float interactDistance = 3f;
-
+    public NetworkVariable<bool> IsHoldingItem => isHoldingItem;
     private readonly NetworkVariable<bool> isHoldingItem = new(
         false,
         NetworkVariableReadPermission.Everyone,
@@ -155,5 +155,24 @@ public class PlayerInteraction : NetworkBehaviour
         {
             pickupHighlight.SetHighlighted(highlighted);
         }
+    }
+
+    [ServerRpc]
+    public void RequestSpawnTrashServerRpc()
+    {
+        if (!IsServer) return;
+
+        // 호스트 서버 컴퓨터에 도착했으므로, 여기서 안전하게 중앙 매니저의 기능을 실행.
+        // 내 넷코드 ID(OwnerClientId)를 매니저에게 넘겨줌.
+        ActionManager.Instance.ExecuteSpawnTrash(OwnerClientId);
+    }
+
+    // 아이템 강제로 들고있게 하기
+    public void ForceSetHeldItem(PickupItem item)
+    {
+        if (!IsServer) return;
+
+        heldItem = item;
+        isHoldingItem.Value = true; // NetworkVariable이므로 모든 클라이언트에게 들고 있다는 상태 동기화됨
     }
 }

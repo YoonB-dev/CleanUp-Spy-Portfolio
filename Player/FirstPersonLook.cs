@@ -10,7 +10,7 @@ public class FirstPersonLook : NetworkBehaviour
     [SerializeField] private float mouseSensitivity = 0.1f;
     [SerializeField] private float minPitch = -80f;
     [SerializeField] private float maxPitch = 80f;
-
+    public Transform PlayerCameraTransform => playerCamera != null ? playerCamera.transform : cameraPivot;
     private float pitch;
     private float yaw;
     private Vector2 lookInput;
@@ -58,12 +58,18 @@ public class FirstPersonLook : NetworkBehaviour
         }
 
         transform.rotation = Quaternion.Euler(0f, yaw, 0f);
-        SendYawServerRpc(yaw);
+        SendLookRotationServerRpc(yaw, pitch);
     }
 
     [ServerRpc]
-    private void SendYawServerRpc(float serverYaw)
+    private void SendLookRotationServerRpc(float serverYaw, float serverPitch)
     {
+        // 서버에서도 해당 플레이어의 정체성과 카메라 각도를 똑같이 맞춰줍니다.
         transform.rotation = Quaternion.Euler(0f, serverYaw, 0f);
+        
+        if (cameraPivot != null)
+        {
+            cameraPivot.localRotation = Quaternion.Euler(serverPitch, 0f, 0f);
+        }
     }
 }

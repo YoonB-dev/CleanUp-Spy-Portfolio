@@ -8,8 +8,8 @@ public class PickupItem : NetworkBehaviour
     private Rigidbody itemRigidbody;
     private Collider itemCollider;
     private PickupHighlight pickupHighlight;
-    private float carryDistance = 1.25f;
-    private float carryHeight = -1.0f;
+    private float carryDistance = 1.6f;
+    private float carryHeight = 0f;
 
     private PlayerInteraction holder;
     public override void OnNetworkDespawn()
@@ -58,10 +58,31 @@ public class PickupItem : NetworkBehaviour
             return;
         }
 
-        Transform holderTransform = holder.transform;
-        Vector3 followPosition = holderTransform.position + holderTransform.forward * carryDistance + Vector3.up * carryHeight;
-        transform.position = followPosition;
-        transform.rotation = holderTransform.rotation;
+        if (holder.TryGetComponent<FirstPersonLook>(out var player))
+        {
+            Transform camTransform = player.PlayerCameraTransform;
+
+            if (camTransform != null)
+            {
+                // 2. 카메라의 정면(forward) 방향으로 carryDistance만큼 띄우고, 
+                // 카메라 기준의 정중앙에 위치시키기 위해 약간 아래나 위로 조절하고 싶다면 camTransform.up을 활용.
+                // (가운데 딱 맞추려면 Vector3.up * carryHeight 대신 살짝만 내리거나 0으로 두면 됨ㅇㅇ)
+                Vector3 followPosition = camTransform.position + camTransform.forward * carryDistance + camTransform.up * carryHeight;
+
+                transform.position = followPosition;
+
+                // 3. 아이템의 회전도 카메라가 바라보는 회전과 일치시킨다.
+                transform.rotation = camTransform.rotation;
+            }
+        }
+        else
+        {
+            // 만약 플레이어 스크립트를 못 찾았다면 기존 백업 로직 수행
+            Transform holderTransform = holder.transform;
+            Vector3 followPosition = holderTransform.position + holderTransform.forward * carryDistance + Vector3.up * carryHeight;
+            transform.position = followPosition;
+            transform.rotation = holderTransform.rotation;
+        }
     }
 
     public bool CanBePickedUpBy(PlayerInteraction playerInteraction)
