@@ -6,24 +6,24 @@ public class PlayerInteraction : NetworkBehaviour
 {
     [SerializeField] private Camera playerCamera;
     [SerializeField] private float interactDistance = 3f;
-    public NetworkVariable<bool> IsHoldingItem => isHoldingItem;
-    private readonly NetworkVariable<bool> isHoldingItem = new(
-        false,
+    private BoxPlacementPreview _placementPreview; // 박스 배치 프리뷰를 관리하는 컴포넌트(스크립트)
+    private readonly NetworkVariable<NetworkObjectReference> _networkHeldItemRef = new(
+        new NetworkObjectReference(),
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server
     );
-
-    private PickupItem heldItem;
+    
     private PickupItem hoveredItem;
-
+    private PickupItem _localCachedHeldItem; // 클라이언트 측에서 들고 있는 아이템을 캐싱하여 빠르게 접근할 수 있도록 함.
+    public Transform PlayerCameraTransform => playerCamera != null ? playerCamera.transform : transform;
     private void Awake()
     {
         if (playerCamera == null)
         {
             playerCamera = GetComponentInChildren<Camera>(true);
         }
+        _placementPreview = GetComponent<BoxPlacementPreview>();
     }
-
     private void Update()
     {
         if (!IsOwner)
@@ -32,6 +32,15 @@ public class PlayerInteraction : NetworkBehaviour
         }
 
         UpdateHoveredItem();
+        if (_placementPreview != null)
+        {
+            _placementPreview.UpdatePreview(GetSafeHeldItem());
+        }
+    }
+    public override void OnNetworkSpawn()
+    {
+        // 네트워크 변수가 변경되었을 때 클라이언트가 즉각 반응하도록 콜백을 등록합니다.
+        _networkHeldItemRef.OnValueChanged += OnHeldItemChanged;
     }
 
     public void OnInteract(InputAction.CallbackContext context)
@@ -41,17 +50,23 @@ public class PlayerInteraction : NetworkBehaviour
             return;
         }
 
-        if (isHoldingItem.Value)
+        if (IsHoldingItem())
         {
-            DropHeldItemServerRpc();
+            if (_placementPreview != null && _placementPreview.IsPreviewValid)
+            {
+                // 박스라면 정렬 배치 시스템 가동 (실패하면 알아서 그냥 떨어짐)
+                TryPlaceBoxServerRpc(_placementPreview.CurrentPreviewPosition);
+                _placementPreview.ClearPreview();
+            }
+            else
+            {
+                // 일반 쓰레기 아이템이라면 기존처럼 그냥 그 자리에 툭 떨어뜨리기
+                DropHeldItemServerRpc();
+            }
             return;
         }
 
-        if (playerCamera == null)
-        {
-            return;
-        }
-
+        if (playerCamera == null) return;
         if (Physics.Raycast(playerCamera.transform.position, playerCamera.transform.forward, out RaycastHit hit, interactDistance))
         {
             if (hit.collider.TryGetComponent<PickupItem>(out PickupItem pickupItem))
@@ -64,7 +79,7 @@ public class PlayerInteraction : NetworkBehaviour
     [ServerRpc]
     private void TryPickupServerRpc(NetworkObjectReference pickupReference)
     {
-        if (isHoldingItem.Value)
+        if (IsHoldingItem())
         {
             return;
         }
@@ -85,21 +100,7 @@ public class PlayerInteraction : NetworkBehaviour
         }
 
         pickupItem.Pickup(this);
-        heldItem = pickupItem;
-        isHoldingItem.Value = true;
-    }
-
-    [ServerRpc]
-    private void DropHeldItemServerRpc()
-    {
-        if (!isHoldingItem.Value || heldItem == null)
-        {
-            return;
-        }
-
-        heldItem.Drop();
-        heldItem = null;
-        isHoldingItem.Value = false;
+        _networkHeldItemRef.Value = pickupReference;
     }
 
     private void UpdateHoveredItem()
@@ -120,7 +121,7 @@ public class PlayerInteraction : NetworkBehaviour
 
         hoveredItem = newHoveredItem;
 
-        if (hoveredItem != null && !isHoldingItem.Value)
+        if (hoveredItem != null && !IsHoldingItem())
         {
             SetHoveredHighlight(true);
         }
@@ -133,10 +134,11 @@ public class PlayerInteraction : NetworkBehaviour
             return;
         }
 
-        if (heldItem != null)
+        PickupItem currentHeldItem = GetCurrentHeldItem();
+        if (IsHoldingItem())
         {
-            heldItem.Drop();
-            heldItem = null;
+            currentHeldItem.Drop();
+            _networkHeldItemRef.Value = new NetworkObjectReference();
         }
 
         SetHoveredHighlight(false);
@@ -172,7 +174,137 @@ public class PlayerInteraction : NetworkBehaviour
     {
         if (!IsServer) return;
 
-        heldItem = item;
-        isHoldingItem.Value = true; // NetworkVariable이므로 모든 클라이언트에게 들고 있다는 상태 동기화됨
+        if (item == null)
+        {
+            _networkHeldItemRef.Value = new NetworkObjectReference();
+        }
+        else
+        {
+            _networkHeldItemRef.Value = new NetworkObjectReference(item.NetworkObject);
+        }
+    }
+
+    /// <summary>
+    /// 들고 있는 박스를 정렬 영역이나 기존 박스 위에 정렬 배치 시도
+    /// </summary>
+    [ServerRpc]
+    private void TryPlaceBoxServerRpc(Vector3 requestedPosition)
+    {
+        PickupItem currentHeldItem = GetCurrentHeldItem();
+        if (!IsHoldingItem() || currentHeldItem == null) return;
+
+        // 클라이언트가 보낸 좌표 근처 발밑에 진짜 바닥 영역(PlacementZone)이 여전히 존재하는지 확인하는 코드임ㅇㅇ
+        PlacementZone targetZone = null;
+        int zoneLayerMask = LayerMask.GetMask("PlacementZone");
+
+        // 요청된 위치 혹은 그 약간 아래에서 레이를 쏘아 바닥 구역을 역추적함.
+        if (Physics.Raycast(requestedPosition + Vector3.up * 0.1f, Vector3.down, out RaycastHit groundHit, 50f, zoneLayerMask))
+        {
+            targetZone = groundHit.collider.GetComponent<PlacementZone>();
+        }
+
+        // 바닥이 존재하고, 가로세로 영역 내에 있으며, '서버 시점'에서도 그 자리가 완벽히 비어있는지 확인.
+        if (targetZone != null && PlacementValidator.IsValidPlacement(requestedPosition, targetZone, _placementPreview.gBoxSize, currentHeldItem.gameObject))
+        {
+            if (currentHeldItem.TryGetComponent<PlaceableBox>(out var placeableBox))
+            {
+                _networkHeldItemRef.Value = new NetworkObjectReference();
+                currentHeldItem.Drop();
+                placeableBox.PlaceAt(requestedPosition, Quaternion.identity);
+                return;
+            }
+        }
+        // 실패하면 그냥 들고 있던 아이템을 그대로 떨어뜨리기
+        DropHeldItemStandard();
+    }
+    
+    // 기존에 사용하시던 일반 드롭 ServerRpc (일반 쓰레기용)
+    [ServerRpc]
+    private void DropHeldItemServerRpc()
+    {
+        DropHeldItemStandard();
+    }
+
+    // 중복 코드를 줄이기 위한 내부 실제 드롭 처리 함수
+    private void DropHeldItemStandard()
+    {
+        PickupItem currentHeldItem = GetCurrentHeldItem();
+        if (!IsServer || currentHeldItem == null) return;
+        _networkHeldItemRef.Value = new NetworkObjectReference();
+        currentHeldItem.Drop();
+    }
+
+    public bool IsHoldingItem()
+    {
+        // 네트워크 참조에 아무것도 등록되지 않은 상태(기본값)인지 확인합니다.
+        return _networkHeldItemRef.Value.NetworkObjectId != 0;
+    }
+    /// <summary>
+    /// 네트워크 변수로부터 현재 들고 있는 PickupItem 컴포넌트를 안전하게 긁어옵니다.
+    /// </summary>
+    private PickupItem GetCurrentHeldItem()
+    {
+        if (!IsHoldingItem())
+        {
+            return null;
+        }
+
+        if (_networkHeldItemRef.Value.TryGet(out NetworkObject netObj))
+        {
+            return netObj.GetComponent<PickupItem>();
+        }
+
+        return null;
+    }
+    // 클라이언트 측에서 들고 있는 아이템을 캐싱하여 빠르게 접근할 수 있도록 함.
+    private PickupItem GetSafeHeldItem()
+    {
+        if (!IsHoldingItem())
+        {
+            _localCachedHeldItem = null;
+            return null;
+        }
+
+        if (_localCachedHeldItem != null)
+        {
+            return _localCachedHeldItem;
+        }
+
+        _localCachedHeldItem = GetCurrentHeldItem();
+        return _localCachedHeldItem;
+    }
+    /// <summary>
+    /// 네트워크 변수가 동기화 완료되었을 때 클라이언트 측 프리뷰를 즉시 갱신해주는 콜백
+    /// </summary>
+    private void OnHeldItemChanged(NetworkObjectReference previous, NetworkObjectReference current)
+    {
+        if (!IsOwner || _placementPreview == null)
+        {
+            return;
+        }
+        // 1. 이전 아이템을 내려놓았을 때: 이전 아이템의 콜라이더를 다시 켜줍니다.
+        if (previous.TryGet(out NetworkObject prevNetObj))
+        {
+            if (prevNetObj != null && prevNetObj.TryGetComponent<Collider>(out var prevCollider))
+            {
+                prevCollider.enabled = true; // 콜라이더 복구
+            }
+        }
+
+        // 2. 새로운 아이템을 주웠을 때: 내 눈앞을 가리지 않도록 클라이언트 로컬에서도 콜라이더를 끕니다.
+        if (current.TryGet(out NetworkObject currentNetObj))
+        {
+            if (currentNetObj != null && currentNetObj.TryGetComponent<Collider>(out var currentCollider))
+            {
+                currentCollider.enabled = false; // 클라이언트에서도 콜라이더 강제 정지! -> 이거 때문에 설치 오류 발생했음 슈발
+            }
+        }
+
+        if (!IsOwner || _placementPreview == null)
+        {
+            return;
+        }
+
+        _placementPreview.UpdatePreview(GetSafeHeldItem());
     }
 }

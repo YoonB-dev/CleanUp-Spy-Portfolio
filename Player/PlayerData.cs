@@ -23,7 +23,7 @@ public class PlayerData : NetworkBehaviour
         ScoreManager scoreManager = FindAnyObjectByType<ScoreManager>();
         if (scoreManager != null)
         {
-            scoreManager.initScoreText();
+            scoreManager.InitScoreText();
         }
         
         if (!IsServer)

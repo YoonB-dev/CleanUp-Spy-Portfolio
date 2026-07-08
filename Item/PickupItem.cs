@@ -5,13 +5,13 @@ using UnityEngine;
 [RequireComponent(typeof(PickupHighlight))]
 public class PickupItem : NetworkBehaviour
 {
-    private Rigidbody itemRigidbody;
+    private Rigidbody _itemRigidbody;
     private Collider itemCollider;
     private PickupHighlight pickupHighlight;
     private float carryDistance = 1.6f;
-    private float carryHeight = 0f;
+    private float carryHeight = -0.5f;
 
-    private PlayerInteraction holder;
+    private PlayerInteraction _holder;
     public override void OnNetworkDespawn()
     {
         base.OnNetworkDespawn();
@@ -21,9 +21,9 @@ public class PickupItem : NetworkBehaviour
 
     private void Awake()
     {
-        if (itemRigidbody == null)
+        if (_itemRigidbody == null)
         {
-            itemRigidbody = GetComponent<Rigidbody>();
+            _itemRigidbody = GetComponent<Rigidbody>();
         }
 
         if (itemCollider == null)
@@ -36,10 +36,10 @@ public class PickupItem : NetworkBehaviour
             pickupHighlight = GetComponent<PickupHighlight>();
         }
 
-        if (itemRigidbody != null)
+        if (_itemRigidbody != null)
         {
-            itemRigidbody.isKinematic = false;
-            itemRigidbody.useGravity = true;
+            _itemRigidbody.isKinematic = false;
+            _itemRigidbody.useGravity = true;
         }
     }
 
@@ -53,12 +53,12 @@ public class PickupItem : NetworkBehaviour
 
     private void Update()
     {
-        if (!IsServer || holder == null)
+        if (_holder == null || (!IsServer && !_holder.IsOwner))
         {
             return;
         }
 
-        if (holder.TryGetComponent<FirstPersonLook>(out var player))
+        if (_holder.TryGetComponent<FirstPersonLook>(out var player))
         {
             Transform camTransform = player.PlayerCameraTransform;
 
@@ -78,7 +78,7 @@ public class PickupItem : NetworkBehaviour
         else
         {
             // 만약 플레이어 스크립트를 못 찾았다면 기존 백업 로직 수행
-            Transform holderTransform = holder.transform;
+            Transform holderTransform = _holder.transform;
             Vector3 followPosition = holderTransform.position + holderTransform.forward * carryDistance + Vector3.up * carryHeight;
             transform.position = followPosition;
             transform.rotation = holderTransform.rotation;
@@ -87,7 +87,7 @@ public class PickupItem : NetworkBehaviour
 
     public bool CanBePickedUpBy(PlayerInteraction playerInteraction)
     {
-        if (!IsServer || playerInteraction == null || holder != null)
+        if (!IsServer || playerInteraction == null || _holder != null)
         {
             return false;
         }
@@ -98,20 +98,25 @@ public class PickupItem : NetworkBehaviour
 
     public void Pickup(PlayerInteraction playerInteraction)
     {
-        if (!IsServer || playerInteraction == null || holder != null)
+        if (!IsServer || playerInteraction == null || _holder != null)
         {
             return;
         }
 
-        holder = playerInteraction;
+        _holder = playerInteraction;
         SetHighlighted(false);
 
-        if (itemRigidbody != null)
+        if (TryGetComponent<PlaceableBox>(out var placeableBox))
         {
-            itemRigidbody.linearVelocity = Vector3.zero;
-            itemRigidbody.angularVelocity = Vector3.zero;
-            itemRigidbody.isKinematic = true;
-            itemRigidbody.useGravity = false;
+            placeableBox.OnPickedUp(); // 이 안에서 Demolish()가 돌며 아랫장 연쇄 물리 연산 시동
+        }
+
+        if (_itemRigidbody != null)
+        {
+            _itemRigidbody.linearVelocity = Vector3.zero;
+            _itemRigidbody.angularVelocity = Vector3.zero;
+            _itemRigidbody.isKinematic = true;
+            _itemRigidbody.useGravity = false;
         }
 
         if (itemCollider != null)
@@ -122,24 +127,24 @@ public class PickupItem : NetworkBehaviour
 
     public void Drop()
     {
-        if (!IsServer || holder == null)
+        if (!IsServer || _holder == null)
         {
             return;
         }
 
-        holder = null;
+        _holder = null;
 
         if (itemCollider != null)
         {
             itemCollider.enabled = true;
         }
 
-        if (itemRigidbody != null)
+        if (_itemRigidbody != null)
         {
-            itemRigidbody.isKinematic = false;
-            itemRigidbody.useGravity = true;
-            itemRigidbody.linearVelocity = Vector3.zero;
-            itemRigidbody.angularVelocity = Vector3.zero;
+            _itemRigidbody.isKinematic = false;
+            _itemRigidbody.useGravity = true;
+            _itemRigidbody.linearVelocity = Vector3.zero;
+            _itemRigidbody.angularVelocity = Vector3.zero;
         }
     }
 }

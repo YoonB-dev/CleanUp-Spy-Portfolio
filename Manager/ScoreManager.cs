@@ -4,34 +4,53 @@ using UnityEngine;
 
 public class ScoreManager : NetworkBehaviour
 {
-    [SerializeField] private TextMeshProUGUI scoreText;
-    public int CurrentScore => NetworkTrashScore.Value;
-    private readonly NetworkVariable<int> NetworkTrashScore = new (
+    [SerializeField] private TextMeshProUGUI totalScoreText;
+    [SerializeField] private TextMeshProUGUI trashScoreText;
+    [SerializeField] private TextMeshProUGUI boxScoreText;
+    public int CurrentTotalScore => networkTrashScore.Value + networkPlacedBoxScore.Value;
+    // 쓰레기 버리기 점수
+    private readonly NetworkVariable<int> networkTrashScore = new (
+        0,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server
+    );
+    // 배치된 박스 점수
+    private readonly NetworkVariable<int> networkPlacedBoxScore = new(
         0,
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server
     );
 
     // 쓰레기통이 부여할 기본 점수
-    private int _scoreTrashReward = 10;
+    private const int SCORE_TRASH_REWARD = 10;
+    // 배치된 박스가 부여할 기본 점수
+    private const int SCORE_BOX_REWARD = 10;
 
     public override void OnNetworkSpawn()
     {
-        NetworkTrashScore.OnValueChanged += OnScoreChanged;
-        Debug.Log($"초기 점수: {NetworkTrashScore.Value}");
+        networkTrashScore.OnValueChanged += OnScoreChanged;
+        networkPlacedBoxScore.OnValueChanged += OnScoreChanged;
     }
 
     public override void OnNetworkDespawn()
     {
-        NetworkTrashScore.OnValueChanged -= OnScoreChanged;
+        networkTrashScore.OnValueChanged -= OnScoreChanged;
     }
 
-    public void initScoreText()
+    public void InitScoreText()
     {
-        if (scoreText != null)
+        if (totalScoreText != null)
         {
-            scoreText.text = $"Score: {NetworkTrashScore.Value}";
+            totalScoreText.text = $"Total: {CurrentTotalScore}";
         }
+        if (trashScoreText != null)
+        {
+            trashScoreText.text = $"Trash: {networkTrashScore.Value}";
+        }
+        if (boxScoreText != null)
+        {
+            boxScoreText.text = $"Box: {networkPlacedBoxScore.Value}";
+        } 
     }
 
     // 값이 변경되면 모든 클라이언트에서 이 함수가 실행됨
@@ -39,10 +58,10 @@ public class ScoreManager : NetworkBehaviour
     {
         Debug.Log($"점수 변경됨! 이전: {previousValue} -> 현재: {newValue}");
         // 값이 변화하면 UI 업데이트.
-        if (scoreText != null)
-        {
-            scoreText.text = $"Score: {newValue}";
-        }
+        // if (scoreText != null)
+        // {
+        //     scoreText.text = $"Score: {newValue}";
+        // }
     }
 
     public void AddTrashScore()
@@ -53,6 +72,6 @@ public class ScoreManager : NetworkBehaviour
             return;
         }
         // 기존 값에 점수를 더해줍니다. (자동으로 모든 클라이언트 동기화)
-        NetworkTrashScore.Value += _scoreTrashReward;
+        networkTrashScore.Value += SCORE_TRASH_REWARD;
     }
 }

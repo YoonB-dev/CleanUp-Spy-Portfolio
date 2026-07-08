@@ -30,7 +30,7 @@ public class ActionManager : NetworkBehaviour
         var playerObj = NetworkManager.Singleton.ConnectedClients[senderId].PlayerObject;
         if (playerObj == null || !playerObj.TryGetComponent<PlayerInteraction>(out var playerInteraction)) return;
         
-        if (playerInteraction.IsHoldingItem.Value)
+        if (playerInteraction.IsHoldingItem())
         {
             Debug.Log($"[서버] 유저 {senderId}는 이미 아이템을 들고 있어 쓰레기를 생성할 수 없습니다.");
             return;

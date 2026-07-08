@@ -48,11 +48,9 @@ public class PlayerMovement : NetworkBehaviour
         characterController.Move(velocity * Time.deltaTime);
         if (animator != null)
         {
-            // 입력 벡터의 크기를 계산합니다 (정지: 0, 이동중: 1)
+            // 입력 벡터의 크기를 계산 (정지: 0, 이동중: 1)
             float inputSpeed = serverMoveInput.magnitude;
-            // Animator의 'Speed' 파라미터에 값을 세팅합니다.
-            // 서버 권한형이므로 서버가 이 값을 바꾸면 NetworkAnimator가 전 클라이언트에 동기화합니다.
-            Debug.Log($"Server: Setting Animator Speed to {inputSpeed}");
+            // Animator의 'Speed' 파라미터에 값을 세팅, 서버 권한형이므로 서버가 이 값을 바꾸면 NetworkAnimator가 전 클라이언트에 동기화
             SetAnimationSpeedClientRpc(inputSpeed);
         }
     }
