@@ -26,6 +26,12 @@ public class PlayerMovement : NetworkBehaviour
 
     private void Update()
     {
+        // 마피아 돌진중이면 스킵
+        if (MafiaDashSkill.gIsPlayerDashing)
+        {
+            return;
+        }
+
         if (!IsServer)
         {
             return;

@@ -50,6 +50,15 @@
                     "processors": "",
                     "interactions": "",
                     "initialStateCheck": false
+                },
+                {
+                    "name": "MafiaDash",
+                    "type": "Button",
+                    "id": "4df05d32-20eb-44e9-b320-3b5208784d4f",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
                 }
             ],
             "bindings": [
@@ -149,6 +158,17 @@
                     "processors": "",
                     "groups": "",
                     "action": "MafiaTrash",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "16799cb1-d26a-4384-bf6c-90ce8db64380",
+                    "path": "<Keyboard>/r",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "MafiaDash",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

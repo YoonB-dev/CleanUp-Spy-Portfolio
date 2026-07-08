@@ -142,6 +142,15 @@ public class PlaceableBox : NetworkBehaviour
     private void OnPlacementStateChanged(bool previousValue, bool newValue)
     {
         RefreshTagLocal(newValue);
+        // 서버가 _isPlacedNet을 false로 바꾸면, 클라이언트도 물리 엔진을 켭니다.
+        if (!newValue)
+        {
+            if (rb != null)
+            {
+                rb.isKinematic = false;
+                rb.useGravity = true;
+            }
+        }
     }
 
     /// <summary>
@@ -150,5 +159,12 @@ public class PlaceableBox : NetworkBehaviour
     private void RefreshTagLocal(bool isPlaced)
     {
         gameObject.tag = isPlaced ? "PlacedBox" : "Untagged";
+    }
+    public void RequestDemolish()
+    {
+        if (IsServer)
+        {
+            Demolish();
+        }
     }
 }

@@ -37,7 +37,7 @@ public class FirstPersonLook : NetworkBehaviour
 
     public void OnLook(InputAction.CallbackContext context)
     {
-        if (!IsOwner) return;
+        if (!IsOwner || !enabled) return;
         lookInput = context.ReadValue<Vector2>();
     }
 

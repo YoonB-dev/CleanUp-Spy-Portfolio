@@ -12,7 +12,7 @@ public class RoleAssignmentManager : SceneSingleton<RoleAssignmentManager>
             return;
         }
 
-        PlayerRole assignedRole = registeredPlayers.Count == 0
+        PlayerRole assignedRole = registeredPlayers.Count == 1
             ? PlayerRole.Mafia
             : PlayerRole.Citizen;
 
