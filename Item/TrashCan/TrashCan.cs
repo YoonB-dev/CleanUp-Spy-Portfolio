@@ -15,18 +15,19 @@ public class TrashCan : NetworkBehaviour
         // 확장성을 고려해서 Tag 대신 컴포넌트 기반으로 판단함.
         if (other.TryGetComponent<PickupItem>(out PickupItem item))
         {
+            // 일단은 PlaceableBox는 쓰레기통에 안들어가게 막음
+            if (item.TryGetComponent<PlaceableBox>(out _))
+            {
+                return;
+            }
             ProcessItemDisposal(item);
         }
     }
 
     private void ProcessItemDisposal(PickupItem item)
     {
-        ScoreManager scoreManager = FindAnyObjectByType<ScoreManager>();
-        if (scoreManager != null)
-        {
-            scoreManager.AddTrashScore();
-        }
-
+        
+        ScoreManager.Instance?.AddTrashScore();
         if (item.NetworkObject != null && item.NetworkObject.IsSpawned)
         {
             item.NetworkObject.Despawn(false);

@@ -63,6 +63,9 @@ public class PlaceableBox : NetworkBehaviour
 
         // 다른 박스가 레이캐스트로 검사할 수 있도록 태그를 변경합니다.
         gameObject.tag = "PlacedBox";
+
+        // 점수 추가
+        ScoreManager.Instance?.AddBoxScore();
     }
 
     /// <summary>
@@ -113,6 +116,9 @@ public class PlaceableBox : NetworkBehaviour
             ).normalized;
             rb.AddTorque(randomTorque * randomTorqueForce, ForceMode.Impulse);
         }
+
+        // 점수 차감
+        ScoreManager.Instance?.SubtractBoxScore();
 
         // 2. 연쇄 무너짐 처리: 내 바로 위에 다른 박스가 고정되어 있는지 검사.
         // 내 중심점에서 위 방향(Vector3.up * boxSize) 공간을 체크합니다.
