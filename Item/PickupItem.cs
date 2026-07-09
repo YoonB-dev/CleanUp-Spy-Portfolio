@@ -63,6 +63,7 @@ public class PickupItem : NetworkBehaviour
         {
             return;
         }
+
         if (_holder.TryGetComponent<FirstPersonLook>(out var player))
         {
             Transform camTransform = player.PlayerCameraTransform;
@@ -110,6 +111,7 @@ public class PickupItem : NetworkBehaviour
 
         _holder = playerInteraction;
         SetHighlighted(false);
+        NetworkObject.ChangeOwnership(playerInteraction.OwnerClientId);
 
         if (TryGetComponent<PlaceableBox>(out var placeableBox))
         {
@@ -138,6 +140,7 @@ public class PickupItem : NetworkBehaviour
         }
 
         _holder = null;
+        NetworkObject.RemoveOwnership();
 
         if (itemCollider != null)
         {

@@ -29,16 +29,32 @@ public class PaintCleaner : NetworkBehaviour
 
     private void Update()
     {
+        if (IsOwner)
+        {
+            // 내가 이 아이템의 소유자라면, 내 로컬 플레이어 캐릭터 컴포넌트를 주인으로 설정!
+            if (_currentHolder == null && NetworkManager.Singleton != null && NetworkManager.Singleton.LocalClient != null)
+            {
+                var localPlayerObj = NetworkManager.Singleton.LocalClient.PlayerObject;
+                if (localPlayerObj != null)
+                {
+                    _currentHolder = localPlayerObj.GetComponent<PlayerInteraction>();
+                }
+            }
+        }
+        else if (IsServer)
+        {
+            // 서버(호스트) 시점에서는 PickupItem이 가지고 있는 _holder를 그대로 신뢰해도 됩니다.
+            _currentHolder = _pickupItem.Holder;
+        }
         // 1. [공통] 현재 아무도 안 들고 있다면 청소 로직 완전 정지
-        _currentHolder = _pickupItem.Holder; 
         if (_currentHolder == null)
         {
             _isCleaning = false;
             return;
         }
-
+        
         // 2. [로컬] 나를 들고 있는 실소유주(IsOwner)의 화면에서만 마우스 입력 및 레이캐스트 연산 수행
-        if (!_currentHolder.IsOwner) return;
+        if (!IsOwner) return;
 
         // 주인이 페인트 총을 들고 있다면(마피아라면) 청소기 작동 방지
         if (_currentHolder.IsHoldingPaintGun.Value)
@@ -51,7 +67,6 @@ public class PaintCleaner : NetworkBehaviour
         if (!_isCleaning) return;
         if (Time.time < _nextCleanTime) return;
         _nextCleanTime = Time.time + cleanRate;
-
         CleanPaint();
     }
 
@@ -71,10 +86,9 @@ public class PaintCleaner : NetworkBehaviour
             _playerCamera = _currentHolder.GetComponentInChildren<Camera>(true);
         }
         if (_playerCamera == null) return;
-
         Ray ray = _playerCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
         if (!Physics.Raycast(ray, out RaycastHit hit, cleanRange, paintableLayers)) return;
-
+        
         var paintable = hit.collider.GetComponent<PaintableSurface>();
         if (paintable == null) return;
 
@@ -89,7 +103,7 @@ public class PaintCleaner : NetworkBehaviour
     {
         if (!IsServer) return;
 
-        // 🛠️ [서버 중심 검증] RPC를 보낸 클라이언트가 진짜 이 아이템을 들고 있는 주인인지 체크
+        // RPC를 보낸 클라이언트가 진짜 이 아이템을 들고 있는 주인인지 체크
         if (_currentHolder == null || _currentHolder.OwnerClientId != rpcParams.Receive.SenderClientId)
         {
             Debug.LogWarning($"[검증 거부] 아이템을 들고 있지 않은 클라이언트가 청소를 요청함.");
