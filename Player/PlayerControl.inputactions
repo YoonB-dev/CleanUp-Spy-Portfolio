@@ -59,6 +59,33 @@
                     "processors": "",
                     "interactions": "",
                     "initialStateCheck": false
+                },
+                {
+                    "name": "MafiaPaint",
+                    "type": "Button",
+                    "id": "5f5766d3-d73e-4a5a-bd63-f1073b8e9c28",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "MafiaPaintShoot",
+                    "type": "Button",
+                    "id": "d2ffc90f-d794-44d4-92fa-57458cbb2ec0",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "PaintCleaner",
+                    "type": "Button",
+                    "id": "8be80437-058e-40c1-8b70-4864881f6994",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
                 }
             ],
             "bindings": [
@@ -169,6 +196,39 @@
                     "processors": "",
                     "groups": "",
                     "action": "MafiaDash",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "cca22100-2448-4dff-819a-7cd4c0d46b4d",
+                    "path": "<Keyboard>/2",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "MafiaPaint",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "9eb3f788-0fdf-45af-8b27-2c3f44382ea1",
+                    "path": "<Mouse>/leftButton",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "MafiaPaintShoot",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "16ab9716-2b2f-4c19-90c2-80a6dc2a300d",
+                    "path": "<Mouse>/leftButton",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "PaintCleaner",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

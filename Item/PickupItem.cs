@@ -11,7 +11,7 @@ public class PickupItem : NetworkBehaviour
     private float carryDistance = 1.6f;
     private float carryHeight = -0.5f;
 
-    private PlayerInteraction _holder;
+    private PlayerInteraction _holder; public PlayerInteraction Holder => _holder;
     public override void OnNetworkDespawn()
     {
         base.OnNetworkDespawn();

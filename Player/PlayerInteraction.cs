@@ -12,10 +12,16 @@ public class PlayerInteraction : NetworkBehaviour
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server
     );
-    
+
+    // 마피아 페인트 총을 들고 있는지 여부를 나타내는 네트워크 변수
+    public readonly NetworkVariable<bool> IsHoldingPaintGun = new(
+    false,
+    NetworkVariableReadPermission.Everyone,
+    NetworkVariableWritePermission.Server
+);
+
     private PickupItem hoveredItem;
     private PickupItem _localCachedHeldItem; // 클라이언트 측에서 들고 있는 아이템을 캐싱하여 빠르게 접근할 수 있도록 함.
-    public Transform PlayerCameraTransform => playerCamera != null ? playerCamera.transform : transform;
     private void Awake()
     {
         if (playerCamera == null)
@@ -47,6 +53,12 @@ public class PlayerInteraction : NetworkBehaviour
     {
         if (!IsOwner || !context.started)
         {
+            return;
+        }
+
+        if (IsHoldingPaintGun.Value)
+        {
+            Debug.Log("페인트 총을 들고 있는 상태에서는 아이템을 조작할 수 없습니다.");
             return;
         }
 
@@ -107,6 +119,13 @@ public class PlayerInteraction : NetworkBehaviour
     {
         PickupItem newHoveredItem = null;
 
+        if (IsHoldingPaintGun.Value)
+        {
+            SetHoveredHighlight(false);
+            hoveredItem = null;
+            return;
+        }
+        
         if (playerCamera != null && Physics.Raycast(playerCamera.transform.position, playerCamera.transform.forward, out RaycastHit hit, interactDistance))
         {
             hit.collider.TryGetComponent<PickupItem>(out newHoveredItem);
@@ -163,7 +182,10 @@ public class PlayerInteraction : NetworkBehaviour
     public void RequestSpawnTrashServerRpc()
     {
         if (!IsServer) return;
-
+        if (IsHoldingPaintGun.Value)
+        {
+            return;
+        }
         // 호스트 서버 컴퓨터에 도착했으므로, 여기서 안전하게 중앙 매니저의 기능을 실행.
         // 내 넷코드 ID(OwnerClientId)를 매니저에게 넘겨줌.
         ActionManager.Instance.ExecuteSpawnTrash(OwnerClientId);
@@ -306,5 +328,20 @@ public class PlayerInteraction : NetworkBehaviour
         }
 
         _placementPreview.UpdatePreview(GetSafeHeldItem());
+    }
+
+
+    // 청소 도구
+    public void OnClean(InputAction.CallbackContext context)
+    {
+        if (!IsOwner) return;
+        if (!IsHoldingItem()) return;
+        // '청소 도구'인지 확인
+        var heldItem = GetSafeHeldItem();
+        if (heldItem != null && heldItem.TryGetComponent<PaintCleaner>(out var cleaner))
+        {
+            if (context.performed) cleaner.SetCleaningInput(true);
+            else if (context.canceled) cleaner.SetCleaningInput(false);
+        }
     }
 }
