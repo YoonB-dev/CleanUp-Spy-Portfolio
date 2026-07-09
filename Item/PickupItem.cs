@@ -58,7 +58,12 @@ public class PickupItem : NetworkBehaviour
             return;
         }
 
-        if (_holder.TryGetComponent<FirstPersonLook>(out var player) && !MafiaDashSkill.gIsPlayerDashing)
+        // 돌진중이면 스킵
+        if (_holder.TryGetComponent<MafiaDashSkill>(out var dashSkill) && dashSkill.isDashing)
+        {
+            return;
+        }
+        if (_holder.TryGetComponent<FirstPersonLook>(out var player))
         {
             Transform camTransform = player.PlayerCameraTransform;
 

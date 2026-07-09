@@ -7,14 +7,14 @@ using UnityEngine.InputSystem;
 [RequireComponent(typeof(Rigidbody))]
 public class MafiaDashSkill : NetworkBehaviour
 {
-    [SerializeField] private Camera playerCamera;
+    [SerializeField] private Transform playerCameraPivot;
     private float dashSpeed = 10.0f;
     private float dashDuration = 0.5f;
     private float dashCooldown = 1.0f;
     private float thirdPersonOffset = 6.0f;
     [SerializeField] private Animator animator;
-    public static bool gIsPlayerDashing { get; private set; } = false;
-
+    public bool isDashing = false;
+    private bool _isRequestPending = false;
     private Rigidbody _rb;
     private PlayerMovement _movementScript;
     private CharacterController _cc;
@@ -34,16 +34,17 @@ public class MafiaDashSkill : NetworkBehaviour
         _playerInput = GetComponent<PlayerInput>();
         _playerRole = GetComponent<RoleManager>();
 
-        if (playerCamera != null)
+        if (playerCameraPivot != null)
         {
-            _originalCamLocalPos = playerCamera.transform.localPosition;
-            _originalCamLocalRot = playerCamera.transform.localRotation;
+            _originalCamLocalPos = playerCameraPivot.transform.localPosition;
+            _originalCamLocalRot = playerCameraPivot.transform.localRotation;
         }
     }
 
     public void OnDashSkill(InputAction.CallbackContext context)
     {
-        if (!IsOwner || !context.started || gIsPlayerDashing || _isCooldown) return;
+        if (!IsOwner || _playerRole.CurrentRole != PlayerRole.Mafia || !context.started || _isRequestPending) return;
+        _isRequestPending = true;
 
         // [로컬] 이동 및 카메라 제어권을 즉시 회수 (반응성)
         SetPlayerControl(false);
@@ -57,22 +58,18 @@ public class MafiaDashSkill : NetworkBehaviour
     [ServerRpc]
     private void RequestDashServerRpc()
     {
-        if (gIsPlayerDashing || _isCooldown) return;
+        if (isDashing || _isCooldown || _playerRole.CurrentRole != PlayerRole.Mafia) return;
         StartCoroutine(DashRoutine());
         PlayDashAnimationClientRpc();
     }
 
     private IEnumerator DashRoutine()
     {
-        //if (_playerRole.CurrentRole != PlayerRole.Mafia) yield break;
-        gIsPlayerDashing = true;
+        isDashing = true;
         _rb.isKinematic = false;
 
         // 1. 제어권 회수
-        if (_movementScript != null) _movementScript.enabled = false;
-        if (_cc != null) _cc.enabled = false;
-        if (_playerInput != null) _playerInput.DeactivateInput();
-        if (_fpLook != null) _fpLook.enabled = false;
+        SetPlayerControl(false);
 
         Vector3 dashDirection = transform.forward;
         dashDirection.y = 0;
@@ -88,11 +85,6 @@ public class MafiaDashSkill : NetworkBehaviour
             {
                 CheckAndDemolishBoxes(transform.position);
             }
-            else
-            {
-                // 클라이언트가 돌진 중임을 서버에 알리고 서버가 체크하게 함
-                RequestCheckDemolishServerRpc(transform.position);
-            }
 
             elapsedTime += Time.deltaTime;
             yield return null;
@@ -106,19 +98,13 @@ public class MafiaDashSkill : NetworkBehaviour
         GetComponent<NetworkTransform>().Teleport(transform.position, transform.rotation, transform.localScale);
 
         // 5. 컴포넌트 재활성화 (캐릭터 컨트롤러 튀는 현상 방지)
-        if (_cc != null) _cc.enabled = true;
-        if (_movementScript != null) _movementScript.enabled = true;
-        if (_fpLook != null) _fpLook.enabled = true;
-        if (_playerInput != null) _playerInput.ActivateInput();
-
-        gIsPlayerDashing = false;
+        isDashing = false;
         FinishedDashClientRpc();
         StartCoroutine(CooldownRoutine());
     }
 
     private void SetPlayerControl(bool isEnabled)
     {
-        Debug.Log($"SetPlayerControl: {isEnabled}");
         if (_movementScript != null) _movementScript.enabled = isEnabled;
         if (_cc != null) _cc.enabled = isEnabled;
         if (_fpLook != null) _fpLook.enabled = isEnabled;
@@ -141,13 +127,15 @@ public class MafiaDashSkill : NetworkBehaviour
         _isCooldown = true;
         yield return new WaitForSeconds(dashCooldown);
         _isCooldown = false;
+        CooldownFinishedClientRpc();
+    }
+    [ClientRpc]
+    private void CooldownFinishedClientRpc(ClientRpcParams rpcParams = default)
+    {
+        if (!IsOwner) return;
+        _isRequestPending = false; // 이제 다시 대쉬 요청 가능
     }
 
-    [ServerRpc]
-    private void RequestCheckDemolishServerRpc(Vector3 playerPos)
-    {
-        CheckAndDemolishBoxes(playerPos);
-    }
     [ServerRpc]
     private void RequestUpdateCameraServerRpc(bool isThirdPerson)
     {
@@ -178,21 +166,20 @@ public class MafiaDashSkill : NetworkBehaviour
     [ClientRpc]
     private void SetCameraModeClientRpc(bool isThirdPerson)
     {
-        Debug.Log($"SetCameraModeClientRpc: {isThirdPerson}");
-        if (playerCamera == null) return;
+        if (playerCameraPivot == null) return;
 
         if (isThirdPerson)
         {
             // 3인칭 전환
-            Quaternion targetRotation = Quaternion.Euler(5f, 0f, 0f);
-            playerCamera.transform.localRotation = targetRotation;
-            playerCamera.transform.localPosition = _originalCamLocalPos - (Vector3.forward * thirdPersonOffset) + (Vector3.up * 1.5f);
+            Quaternion targetRotation = Quaternion.Euler(15f, 0f, 0f);
+            playerCameraPivot.transform.localRotation = targetRotation;
+            playerCameraPivot.transform.localPosition = _originalCamLocalPos - (Vector3.forward * thirdPersonOffset) + (Vector3.up * 2f);
         }
         else
         {
             // 1인칭 복구
-            playerCamera.transform.localPosition = _originalCamLocalPos;
-            playerCamera.transform.localRotation = _originalCamLocalRot;
+            playerCameraPivot.transform.localPosition = _originalCamLocalPos;
+            playerCameraPivot.transform.localRotation = _originalCamLocalRot;
         }
     }
 }
