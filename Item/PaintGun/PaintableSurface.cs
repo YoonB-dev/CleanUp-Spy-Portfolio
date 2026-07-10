@@ -30,6 +30,7 @@ public class PaintableSurface : MonoBehaviour
 
     private const string MaskPropertyName = "_PaintMask";
 
+    public float ContaminationPercent { get; set; } = 0f;
     private void Awake()
     {
         Canvas = new RenderTexture(textureSize, textureSize, 0, RenderTextureFormat.R8)

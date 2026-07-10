@@ -8,24 +8,34 @@ public class ScoreManager : NetworkBehaviour
     [SerializeField] private TextMeshProUGUI totalScoreText;
     [SerializeField] private TextMeshProUGUI trashScoreText;
     [SerializeField] private TextMeshProUGUI boxScoreText;
+    [SerializeField] private TextMeshProUGUI paintScoreText;
     public int CurrentTotalScore => _networkTrashScore.Value + _networkPlacedBoxScore.Value;
-    // 쓰레기 버리기 점수
+    // =====쓰레기 버리기 점수=====
     private readonly NetworkVariable<int> _networkTrashScore = new (
         0,
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server
     );
-    // 배치된 박스 점수
+    private const int SCORE_TRASH_REWARD = 10;// 쓰레기통이 부여할 기본 점수
+    // =====배치된 박스 점수=====
     private readonly NetworkVariable<int> _networkPlacedBoxScore = new(
         0,
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server
     );
+    private const int SCORE_BOX_REWARD = 10;// 배치된 박스가 부여할 기본 점수
 
-    // 쓰레기통이 부여할 기본 점수
-    private const int SCORE_TRASH_REWARD = 10;
-    // 배치된 박스가 부여할 기본 점수
-    private const int SCORE_BOX_REWARD = 10;
+    // =====페인트 점수=====
+    private readonly NetworkVariable<float> _contaminationLevel = new(
+        0,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server
+    );
+    public float ContaminationLevel => _contaminationLevel.Value;
+    private const float SCORE_PAINT = 0.5f; // 배치된 박스가 부여할 기본 점수
+    private const float SCORE_CLEAR_PAINT = 0.5f; 
+
+
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -40,11 +50,14 @@ public class ScoreManager : NetworkBehaviour
     {
         _networkTrashScore.OnValueChanged += OnScoreChanged;
         _networkPlacedBoxScore.OnValueChanged += OnScoreChanged;
+        _contaminationLevel.OnValueChanged += OnContaminationChanged;
     }
 
     public override void OnNetworkDespawn()
     {
         _networkTrashScore.OnValueChanged -= OnScoreChanged;
+        _networkPlacedBoxScore.OnValueChanged -= OnScoreChanged;
+        _contaminationLevel.OnValueChanged -= OnContaminationChanged;
     }
     public void InitScoreText()
     {
@@ -60,10 +73,18 @@ public class ScoreManager : NetworkBehaviour
         {
             boxScoreText.text = $"Box: {_networkPlacedBoxScore.Value}";
         } 
+        if (paintScoreText != null)
+        {
+            paintScoreText.text = $"Paint: {_contaminationLevel.Value}";
+        }
     }
 
     // 값이 변경되면 모든 클라이언트에서 이 함수가 실행됨
     private void OnScoreChanged(int previousValue, int newValue)
+    {
+        UpdateScoreUI();
+    }
+    private void OnContaminationChanged(float previousValue, float newValue)
     {
         UpdateScoreUI();
     }
@@ -80,6 +101,10 @@ public class ScoreManager : NetworkBehaviour
         if (boxScoreText != null)
         {
             boxScoreText.text = $"Box: {_networkPlacedBoxScore.Value}";
+        }
+        if (paintScoreText != null)
+        {
+            paintScoreText.text = $"Paint: {_contaminationLevel.Value}";
         }
     }
     /// 일반 쓰레기 점수
@@ -119,5 +144,31 @@ public class ScoreManager : NetworkBehaviour
         {
             _networkPlacedBoxScore.Value = 0;
         }
+    }
+
+    /// <summary>
+    /// 표면 하나의 오염도 계산이 끝날 때마다 PaintSurfaceManager가 호출.
+    /// PaintSurfaceManager가 이미 들고 있는 등록 목록을 재사용해 씬 전체를 매번 다시 스캔하지 않도록 함.
+    /// </summary>
+    public void RecalculateTotalContamination()
+    {
+        if (!IsServer) return;
+        if (PaintSurfaceManager.Instance == null) return;
+
+        float sumPercent = 0f;
+        int count = 0;
+
+        foreach (var surface in PaintSurfaceManager.Instance.AllSurfaces)
+        {
+            sumPercent += surface.ContaminationPercent;
+            count++;
+        }
+
+        if (count == 0) return;
+
+        float averageContamination = sumPercent / count;
+        // 소수점 2자리로 반올림해서 동기화 (불필요한 NetworkVariable 갱신도 줄어듦)
+        averageContamination = Mathf.Round(averageContamination * 100f) / 100f;
+        _contaminationLevel.Value = Mathf.Clamp(averageContamination, 0f, 100f);
     }
 }
