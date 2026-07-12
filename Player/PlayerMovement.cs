@@ -99,11 +99,18 @@ public class PlayerMovement : NetworkBehaviour
         Vector3 horizontal = new Vector3(toHold.x, 0f, toHold.z);
         Vector3 horizontalVelocity = Vector3.ClampMagnitude(horizontal / Time.deltaTime, GRAB_DRAG_SPEED);
 
-        // 수직: 매 프레임 새로 계산(누적 안 함 → 놓을 때 안 튐).
-        float verticalDrag = Mathf.Clamp(toHold.y * GRAB_VERTICAL_FOLLOW / Time.deltaTime, -GRAB_DRAG_SPEED, GRAB_DRAG_SPEED);
-        verticalVelocity = 0f;
+        // 수직: 중력은 항상 작용(서로 붙잡아도 무한 상승하지 않게). verticalVelocity에 누적되므로 놓을 때도 자연스럽게 낙하.
+        verticalVelocity += gravity * Time.deltaTime;
+        float verticalOut = verticalVelocity;
 
-        velocity = horizontalVelocity + Vector3.up * verticalDrag;
+        // 붙잡은 사람이 위에 있을 때만(점프 등) 그 프레임 한정으로 따라 올라간다(누적 안 하므로 놓을 때 안 튐).
+        if (toHold.y > 0f)
+        {
+            float lift = Mathf.Min(toHold.y * GRAB_VERTICAL_FOLLOW / Time.deltaTime, GRAB_DRAG_SPEED);
+            verticalOut = Mathf.Max(verticalOut, lift);
+        }
+
+        velocity = horizontalVelocity + Vector3.up * verticalOut;
         return true;
     }
 

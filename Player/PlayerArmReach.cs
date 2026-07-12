@@ -2,8 +2,8 @@ using UnityEngine;
 
 /// <summary>
 /// 붙잡을 때 팔 뻗는 동작을 만드는 스크립트. <br/>
-/// PlayerGrab이 알려주는 상태(뻗는 중/잡는 중/보는 방향/잡은 위치)를 보고,
-/// 캐릭터 팔 뼈를 코드로 돌리고 늘려서 손이 상대에게 가도록 한다.
+/// PlayerGrab이 알려주는 상태를 보고 팔 뼈를 목표 방향으로 곧게 겨냥하고, 팔 길이 밖이면 길이 축만 늘여 닿게 한다.
+/// (자연스러운 팔꿈치 굽힘은 2본 IK가 필요 — 캐릭터 모델 확정 후 별도 작업)
 /// </summary>
 [RequireComponent(typeof(PlayerGrab))]
 public class PlayerArmReach : MonoBehaviour
@@ -14,8 +14,6 @@ public class PlayerArmReach : MonoBehaviour
     [SerializeField] private string handBoneName = "mixamorig:RightHand";
 
     [Header("팔 뻗기 연출")]
-    [Tooltip("팔을 뻗었을 때 길이 배율(1=원본, 클수록 길어짐)")]
-    [SerializeField] private float armStretch = 1.6f;
     [Tooltip("시선 정면 방향으로 뻗는 정도")]
     [SerializeField] private float reachForward = 1f;
     [Tooltip("화면 우측으로 치우치는 정도(클수록 오른쪽)")]
@@ -28,9 +26,10 @@ public class PlayerArmReach : MonoBehaviour
     [SerializeField] private float swayAngle = 5f;
     [Tooltip("흐느적거리는 흔들림 속도")]
     [SerializeField] private float swaySpeed = 5f;
+    [Tooltip("손이 잡은 지점보다 얼마나 앞에서 멈출지. 손이 관통하면 키우고, 손이 안 닿으면 줄이기")]
+    [SerializeField] private float handInset = 0.2f;
 
-    private const float GRAB_HAND_INSET = 0.2f;   // 손이 잡은 지점을 뚫지 않게 앞에서 멈추는 여유 수치
-    private const float GRAB_MAX_STRETCH = 6f;    // 팔 늘이기 배율 MAX 값
+    private float maxGrabStretch = 3f;
 
     private PlayerGrab _grab;
     private Camera _playerCamera;
@@ -38,13 +37,16 @@ public class PlayerArmReach : MonoBehaviour
     private Transform _upperArmBone;
     private Transform _foreArmBone;
     private Transform _handBone;
-    private Vector3 _upperArmForwardLocal;     // 윗팔 로컬 길이 방향
-    private Vector3 _foreArmForwardLocal;      // 아랫팔 로컬 길이 방향
+    private Vector3 _upperArmForwardLocal;    // 윗팔 로컬 길이 방향(겨냥용)
+    private Vector3 _foreArmForwardLocal;     // 아랫팔 로컬 길이 방향
     private Vector3 _upperArmBaseScale = Vector3.one;
-    private Vector3 _foreArmBaseScale = Vector3.one;
-    private int _upperArmStretchAxis = -1;     // 윗팔 길이 방향 축(0=x,1=y,2=z)
-    private float _naturalArmLength;           // 늘이지 않은 어깨~손 길이(늘이기 배율 계산용)
-    private float _reachWeight;                // 0~1, 팔이 뻗어진 정도
+    private int _upperArmStretchAxis = -1;    // 윗팔 길이 방향 축(길이 축만 늘려 얇게 유지)
+    private float _naturalUpperLen;   // 어깨 ~ 팔꿈치 길이 원본
+    private float _naturalLowerLen;   // 팔꿈치 ~ 손 길이 원본
+    private float _reachWeight;       // 0 ~ 1, 팔이 뻗어진 정도
+
+    /// <summary>늘이지 않은 팔의 어깨 ~ 손 길이(월드). PlayerGrab이 당겨오는 거리 계산에 사용.</summary>
+    public float ArmReach => _naturalUpperLen + _naturalLowerLen;
 
     private void Awake()
     {
@@ -55,90 +57,86 @@ public class PlayerArmReach : MonoBehaviour
         _foreArmBone = FindBoneByName(transform, foreArmBoneName);
         _handBone = FindBoneByName(transform, handBoneName);
 
-        // 본의 길이 방향/스케일 축을 자식 본 위치로 미리 계산
-        if (_upperArmBone != null)
+        if (_upperArmBone != null && _foreArmBone != null)
         {
             _upperArmBaseScale = _upperArmBone.localScale;
-            if (_foreArmBone != null)
-            {
-                _upperArmForwardLocal = _foreArmBone.localPosition.normalized;
-                _upperArmStretchAxis = DominantAxisIndex(_foreArmBone.localPosition);
-            }
+            _upperArmForwardLocal = _foreArmBone.localPosition.normalized;
+            _upperArmStretchAxis = DominantAxisIndex(_foreArmBone.localPosition);
         }
 
-        if (_foreArmBone != null)
+        if (_foreArmBone != null && _handBone != null)
         {
-            _foreArmBaseScale = _foreArmBone.localScale;
-            if (_handBone != null)
-            {
-                _foreArmForwardLocal = _handBone.localPosition.normalized;
-            }
+            _foreArmForwardLocal = _handBone.localPosition.normalized;
         }
 
         if (_upperArmBone != null && _foreArmBone != null && _handBone != null)
         {
-            _naturalArmLength = Vector3.Distance(_upperArmBone.position, _foreArmBone.position)
-                              + Vector3.Distance(_foreArmBone.position, _handBone.position);
+            _naturalUpperLen = Vector3.Distance(_upperArmBone.position, _foreArmBone.position);
+            _naturalLowerLen = Vector3.Distance(_foreArmBone.position, _handBone.position);
         }
     }
 
-    // 애니메이터 포즈 위에 팔을 겨냥해 뻗음. 애니메이터 포즈 위에 팔만 덮어써야 하기 때문에 LateUpdate 사용
+    // 애니메이터 포즈가 적용된 뒤(LateUpdate) 팔만 덮어쓴다. 모든 클라이언트에서 실행.
     private void LateUpdate()
     {
         bool active = _grab != null && (_grab.IsReaching || _grab.IsGrabbing);
         float targetWeight = active ? 1f : 0f;
         _reachWeight = Mathf.MoveTowards(_reachWeight, targetWeight, reachBlendSpeed * Time.deltaTime);
 
-        if (_reachWeight <= 0.0001f)
+        if (_reachWeight <= 0.0001f || _upperArmBone == null || _foreArmBone == null)
         {
             RestoreArmScale();
             return;
         }
 
-        Vector3 reachDir = GetReachWorldDirection();
+        Vector3 shoulderPos = _upperArmBone.position;
+        Vector3 targetPoint = GetReachTargetPoint(shoulderPos);
+        Vector3 toTarget = targetPoint - shoulderPos;
+        Vector3 reachDir = toTarget.sqrMagnitude > 1e-6f ? toTarget.normalized : transform.forward;
 
-        // 붙잡는 중엔 손이 대상에 고정되도록 흔들지 않음
-        if (!_grab.IsGrabbing)
+        // 팔 길이 밖이면 길이 축만 늘여 닿게 함
+        float naturalFull = _naturalUpperLen + _naturalLowerLen;
+        float targetDist = toTarget.magnitude;
+        if (_upperArmStretchAxis >= 0 && naturalFull > 0.001f && targetDist > naturalFull)
         {
-            float sway = Mathf.Sin(Time.time * swaySpeed) * swayAngle;
-            reachDir = Quaternion.AngleAxis(sway, transform.up) * reachDir;
+            float stretch = Mathf.Min(targetDist / naturalFull, maxGrabStretch);
+            Vector3 scale = _upperArmBaseScale;
+            scale[_upperArmStretchAxis] = _upperArmBaseScale[_upperArmStretchAxis] * Mathf.Lerp(1f, stretch, _reachWeight);
+            _upperArmBone.localScale = scale;
+        }
+        else
+        {
+            _upperArmBone.localScale = _upperArmBaseScale;
         }
 
-        // 윗팔/아랫팔을 같은 방향으로 겨냥
+        // 윗팔/아랫팔을 같은 방향으로 겨냥해 곧게 뻗은 팔.
         AimBoneAlong(_upperArmBone, reachDir, _upperArmForwardLocal);
         AimBoneAlong(_foreArmBone, reachDir, _foreArmForwardLocal);
-
-        // 윗팔만 늘리기(아랫팔은 상속으로 함께 늘어남)
-        float stretch = ComputeCurrentStretch();
-        ApplyStretch(_upperArmBone, _upperArmBaseScale, _upperArmStretchAxis, stretch);
     }
 
-    // 잡은 지점에 손이 닿도록 목표거리/기본팔길이 배율 계산
-    private float ComputeCurrentStretch()
+    // 겨냥할 목표 지점. 붙잡는 중이면 잡은 지점(손 두께만큼 앞), 아니면 시선 방향으로 뻗은 가상의 점.
+    private Vector3 GetReachTargetPoint(Vector3 shoulderPos)
     {
-        if (_grab.IsGrabbing && _naturalArmLength > 0.001f && _grab.TryGetGrabWorldPoint(out Vector3 targetPoint))
+        if (_grab.IsGrabbing && _grab.TryGetGrabWorldPoint(out Vector3 grabPoint))
         {
-            Vector3 shoulderPos = _upperArmBone != null ? _upperArmBone.position : transform.position;
-            float reachDistance = Mathf.Max(0f, Vector3.Distance(shoulderPos, targetPoint) - GRAB_HAND_INSET);
-            return Mathf.Clamp(reachDistance / _naturalArmLength, 1f, GRAB_MAX_STRETCH);
+            Vector3 toGrab = grabPoint - shoulderPos;
+            float dist = toGrab.magnitude;
+            if (dist > 1e-4f)
+            {
+                return shoulderPos + toGrab / dist * Mathf.Max(0f, dist - handInset);
+            }
+            return grabPoint;
         }
 
-        return armStretch;
+        // 리치 제스처: 시선 방향으로 팔 길이보다 살짝 밖을 목표로
+        Vector3 reachDir = GetReachWorldDirection();
+        float reachLen = (_naturalUpperLen + _naturalLowerLen) * 1.05f;
+        return shoulderPos + reachDir * reachLen;
     }
 
-    // 팔이 향할 방향. 붙잡는 중이면 잡은 지점, 아니면 시선 따라가도록 설정
+    // 리치 제스처가 향할 방향. 붙잡을 땐 안 쓰임.
     private Vector3 GetReachWorldDirection()
     {
-        if (_grab.IsGrabbing && _grab.TryGetGrabWorldPoint(out Vector3 aimPoint))
-        {
-            Vector3 shoulderPos = _upperArmBone != null ? _upperArmBone.position : transform.position;
-            Vector3 toTarget = aimPoint - shoulderPos;
-            if (toTarget.sqrMagnitude > 1e-6f)
-            {
-                return toTarget.normalized;
-            }
-        }
-
         Vector3 forward;
         Vector3 right;
         Vector3 up;
@@ -159,6 +157,11 @@ public class PlayerArmReach : MonoBehaviour
         }
 
         Vector3 direction = forward * reachForward + right * reachRight - up * reachDown;
+
+        // 흐느적 흔들림(잡는 중엔 이 경로를 안 타므로 자동으로 흔들림 없음).
+        float sway = Mathf.Sin(Time.time * swaySpeed) * swayAngle;
+        direction = Quaternion.AngleAxis(sway, transform.up) * direction;
+
         return direction.normalized;
     }
 
@@ -176,20 +179,6 @@ public class PlayerArmReach : MonoBehaviour
         bone.rotation = Quaternion.Slerp(bone.rotation, aimed, _reachWeight);
     }
 
-    // 길이 방향 축만 스케일해 팔 늘이기
-    private void ApplyStretch(Transform bone, Vector3 baseScale, int stretchAxis, float stretch)
-    {
-        if (bone == null || stretchAxis < 0)
-        {
-            return;
-        }
-
-        float factor = Mathf.Lerp(1f, stretch, _reachWeight);
-        Vector3 scale = baseScale;
-        scale[stretchAxis] = baseScale[stretchAxis] * factor;
-        bone.localScale = scale;
-    }
-
     // 원래 길이로 복원
     private void RestoreArmScale()
     {
@@ -197,14 +186,9 @@ public class PlayerArmReach : MonoBehaviour
         {
             _upperArmBone.localScale = _upperArmBaseScale;
         }
-
-        if (_foreArmBone != null)
-        {
-            _foreArmBone.localScale = _foreArmBaseScale;
-        }
     }
 
-    // 절댓값이 가장 큰 축 인덱스(0=x,1=y,2=z)
+    // 절댓값이 가장 큰 축 인덱스(0=x,1=y,2=z) = 자식 본이 놓인 방향 = 뼈의 길이 축
     private static int DominantAxisIndex(Vector3 v)
     {
         Vector3 abs = new(Mathf.Abs(v.x), Mathf.Abs(v.y), Mathf.Abs(v.z));

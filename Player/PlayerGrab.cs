@@ -11,6 +11,10 @@ public class PlayerGrab : NetworkBehaviour
     [Header("조준")]
     [SerializeField] private Camera playerCamera;
 
+    [Header("붙잡기")]
+    [Tooltip("잡은 상대를 유지하는 거리(팔 길이 배수)")]
+    [SerializeField] private float holdReachFactor = 1f;
+
     [Header("디버그")]
     [Tooltip("켜면 토글(누를 때마다 잡기 - 놓기), 끄면 홀드(누르는 동안만)")]
     [SerializeField] private bool toggleGrab = false;
@@ -18,7 +22,8 @@ public class PlayerGrab : NetworkBehaviour
     private const float GRAB_REACH_RANGE = 1.8f;        // 손이 닿는 최대 거리
     private const float GRAB_SPHERE_RADIUS = 0.35f;     // 조준 판정 여유 반경
     private const float GRAB_VALIDATE_RANGE = 3.0f;     // 서버가 붙잡기를 승인하는 최대 거리
-    private const float GRAB_STRETCH_LIMIT = 1.6f;      // 잡은 대상을 놓치는 거리
+    private const float GRAB_STRETCH_LIMIT = 1.6f;      // 상대가 목표 지점에서 이만큼 벌어지면(막힘) 놓침
+    private const float GRAB_SETTLE_TIME = 0.4f;        // 당겨오는 초반 유예(아직 멀어서 오판 방지)
     private const float REACH_DURATION = 0.45f;         // 갱신 끊긴 뒤 팔을 내리기까지의 시간
     private const float REACH_REFRESH_INTERVAL = 0.2f;  // 홀드 중 reach 갱신 주기(REACH_DURATION보다 짧아야 함)
     private const float GRAB_TRY_INTERVAL = 0.1f;       // 홀드 중 붙잡기 재시도 주기
@@ -36,14 +41,14 @@ public class PlayerGrab : NetworkBehaviour
         new NetworkObjectReference(), NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     private readonly NetworkVariable<Vector3> _grabLocalPointNet = new(                    // 붙잡은 지점(대상 로컬 좌표)
         Vector3.zero, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
-    private readonly NetworkVariable<float> _grabInitialDistanceNet = new(                 // 붙잡은 순간 간격(늘어남/놓기 기준)
-        0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
     private PlayerGrab _serverGrabTarget;   // [서버] 내가 붙잡은 대상
     private float _reachEndTime;            // [서버] 손 뻗기 자동 종료 시각
+    private float _grabStartTime;           // [서버] 붙잡은 시각(당겨오기 유예 판정용)
     private Vector3 _holdOffset;            // [서버] 붙잡은 순간의 상대 위치(나 기준 오프셋). 내가 이동하면 오프셋을 유지하며 끌려옴.
 
     private FirstPersonLook _firstPersonLook;
+    private PlayerArmReach _armReach;
     private bool _yawLimitApplied;
 
     // [Owner] 붙잡기 키 홀드 상태 + 재시도 타이머
@@ -84,6 +89,7 @@ public class PlayerGrab : NetworkBehaviour
         }
 
         _firstPersonLook = GetComponent<FirstPersonLook>();
+        _armReach = GetComponent<PlayerArmReach>();
     }
 
     public override void OnNetworkDespawn()
@@ -128,9 +134,16 @@ public class PlayerGrab : NetworkBehaviour
             return;
         }
 
-        // 잡은 대상과 한계 이상으로 벌어지면(팔이 최대로 늘어남) 놓아줌
-        float distance = Vector3.Distance(transform.position, _serverGrabTarget.transform.position);
-        if (distance > _grabInitialDistanceNet.Value + GRAB_STRETCH_LIMIT)
+        // 당겨오는 초반엔 아직 멀어서 오판하므로 유예
+        if (Time.time - _grabStartTime < GRAB_SETTLE_TIME)
+        {
+            return;
+        }
+
+        // 상대가 목표 지점(당겨올 위치)에서 한계 이상 못 따라오면(막힘) 놓아줌
+        Vector3 holdPoint = transform.position + _holdOffset;
+        float victimLag = Vector3.Distance(_serverGrabTarget.transform.position, holdPoint);
+        if (victimLag > GRAB_STRETCH_LIMIT)
         {
             ServerReleaseGrab();
         }
@@ -333,9 +346,17 @@ public class PlayerGrab : NetworkBehaviour
         _grabLocalPointNet.Value = localGrabPoint;
         _isGrabbingNet.Value = true;
 
-        // 붙잡은 순간 상대 위치를 오프셋으로 고정(잡는 순간 안 움직이고, 이동 시 끌려옴).
+        // 붙잡은 순간 상대 위치를 오프셋으로 고정. 팔 길이 * holdReachFactor 안으로 당겨옴.
         _holdOffset = target.transform.position - transform.position;
-        _grabInitialDistanceNet.Value = _holdOffset.magnitude;
+        if (_armReach != null)
+        {
+            float maxHold = _armReach.ArmReach * holdReachFactor;
+            if (_holdOffset.magnitude > maxHold)
+            {
+                _holdOffset = _holdOffset.normalized * maxHold;
+            }
+        }
+        _grabStartTime = Time.time;
     }
 
     // 키 뗌: 놓기 + 팔 즉시 내림
