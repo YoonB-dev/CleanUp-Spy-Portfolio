@@ -11,6 +11,10 @@ public class PlayerGrab : NetworkBehaviour
     [Header("조준")]
     [SerializeField] private Camera playerCamera;
 
+    [Header("디버그")]
+    [Tooltip("켜면 토글(누를 때마다 잡기 - 놓기), 끄면 홀드(누르는 동안만)")]
+    [SerializeField] private bool toggleGrab = false;
+
     private const float GRAB_REACH_RANGE = 1.8f;        // 손이 닿는 최대 거리
     private const float GRAB_SPHERE_RADIUS = 0.35f;     // 조준 판정 여유 반경
     private const float GRAB_VALIDATE_RANGE = 3.0f;     // 서버가 붙잡기를 승인하는 최대 거리
@@ -190,7 +194,7 @@ public class PlayerGrab : NetworkBehaviour
         }
     }
 
-    /// <summary>붙잡기 입력(G키). 누르면 홀드 시작, 떼면 놓기</summary>
+    /// <summary>붙잡기 입력(G키). 홀드 모드면 누르는 동안, 토글 모드면 누를 때마다 잡기↔놓기.</summary>
     public void OnGrab(InputAction.CallbackContext context)
     {
         if (!IsOwner)
@@ -198,16 +202,39 @@ public class PlayerGrab : NetworkBehaviour
             return;
         }
 
-        if (context.started)
+        if (toggleGrab)
         {
-            _grabHeld = true;
+            // 토글: 누를 때마다 켜고 끔(떼는 건 무시)
+            if (context.started)
+            {
+                SetGrabActive(!_grabHeld);
+            }
+        }
+        else
+        {
+            // 홀드: 누르면 시작, 떼면 종료
+            if (context.started)
+            {
+                SetGrabActive(true);
+            }
+            else if (context.canceled)
+            {
+                SetGrabActive(false);
+            }
+        }
+    }
+
+    private void SetGrabActive(bool active)
+    {
+        _grabHeld = active;
+        if (active)
+        {
             // 다음 프레임 즉시 시도되도록 타이머 리셋
             _nextReachRefreshTime = 0f;
             _nextGrabTryTime = 0f;
         }
-        else if (context.canceled)
+        else
         {
-            _grabHeld = false;
             RequestStopServerRpc();
         }
     }
