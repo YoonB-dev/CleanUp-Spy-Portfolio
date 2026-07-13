@@ -367,7 +367,7 @@ public class PlayerGrab : NetworkBehaviour
         if (_armReach != null)
         {
             float maxHold = _armReach.ArmReach * holdReachFactor;
-            if (_holdOffset.magnitude > maxHold)
+            if (maxHold > 0f && _holdOffset.magnitude > maxHold)
             {
                 _holdOffset = _holdOffset.normalized * maxHold;
             }
