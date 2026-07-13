@@ -167,9 +167,9 @@ public class PlayerGrab : NetworkBehaviour
         if (!IsGrabbing && Time.time >= _nextGrabTryTime)
         {
             _nextGrabTryTime = Time.time + GRAB_TRY_INTERVAL;
-            if (TryFindGrabTarget(out NetworkObjectReference targetRef, out Vector3 localGrabPoint))
+            if (TryFindGrabTarget(GRAB_REACH_RANGE, null, out PlayerGrab target, out _))
             {
-                RequestGrabServerRpc(targetRef, localGrabPoint);
+                RequestGrabServerRpc(new NetworkObjectReference(target.NetworkObject));
             }
         }
     }
@@ -252,10 +252,13 @@ public class PlayerGrab : NetworkBehaviour
         }
     }
 
-    // 카메라 정면으로 스피어캐스트해 가장 가까운 플레이어와 손이 닿은 지점(대상 로컬)을 찾는다.
-    private bool TryFindGrabTarget(out NetworkObjectReference targetRef, out Vector3 localGrabPoint)
+    /// <summary>
+    /// 카메라 정면으로 스피어캐스트해 플레이어와 손이 닿은 지점(대상 로컬)을 찾는다. <br/>
+    /// Owner의 조준(requiredTarget = null, 가장 가까운 대상)과 서버의 조준 재검증(requiredTarget 지정) 양쪽에서 사용.
+    /// </summary>
+    private bool TryFindGrabTarget(float range, PlayerGrab requiredTarget, out PlayerGrab target, out Vector3 localGrabPoint)
     {
-        targetRef = default;
+        target = null;
         localGrabPoint = Vector3.zero;
         if (playerCamera == null)
         {
@@ -263,7 +266,7 @@ public class PlayerGrab : NetworkBehaviour
         }
 
         Ray ray = new(playerCamera.transform.position, playerCamera.transform.forward);
-        RaycastHit[] hits = Physics.SphereCastAll(ray, GRAB_SPHERE_RADIUS, GRAB_REACH_RANGE);
+        RaycastHit[] hits = Physics.SphereCastAll(ray, GRAB_SPHERE_RADIUS, range);
 
         PlayerGrab nearestTarget = null;
         float nearestDistance = float.MaxValue;
@@ -274,6 +277,11 @@ public class PlayerGrab : NetworkBehaviour
         {
             PlayerGrab candidate = hit.collider.GetComponentInParent<PlayerGrab>();
             if (candidate == null || candidate == this)   // 자기 캡슐도 맞으므로 자신은 건너뜀
+            {
+                continue;
+            }
+
+            if (requiredTarget != null && candidate != requiredTarget)
             {
                 continue;
             }
@@ -299,7 +307,7 @@ public class PlayerGrab : NetworkBehaviour
             : nearestTarget.transform.position + Vector3.up * GRAB_TARGET_HEIGHT;
         localGrabPoint = nearestTarget.transform.InverseTransformPoint(worldGrabPoint);
 
-        targetRef = new NetworkObjectReference(nearestTarget.NetworkObject);
+        target = nearestTarget;
         return true;
     }
 
@@ -311,7 +319,7 @@ public class PlayerGrab : NetworkBehaviour
     }
 
     [ServerRpc]
-    private void RequestGrabServerRpc(NetworkObjectReference targetRef, Vector3 localGrabPoint)
+    private void RequestGrabServerRpc(NetworkObjectReference targetRef)
     {
         if (_serverGrabTarget != null)
         {
@@ -336,6 +344,14 @@ public class PlayerGrab : NetworkBehaviour
         // 서버에서 거리 재검증(치트 방어).
         float distance = Vector3.Distance(transform.position, target.transform.position);
         if (distance > GRAB_VALIDATE_RANGE)
+        {
+            return;
+        }
+
+        // 서버에서 조준 재검증(치트 방어). 대상이 실제로 시선 정면에 있는지 서버 물리로 다시 확인하고,
+        // 붙잡은 지점도 클라이언트 값을 믿지 않고 서버가 직접 계산한다.
+        // 지연 보정을 위해 조준 사거리(GRAB_REACH_RANGE)가 아닌 검증 사거리(GRAB_VALIDATE_RANGE)로 판정.
+        if (!TryFindGrabTarget(GRAB_VALIDATE_RANGE, target, out _, out Vector3 localGrabPoint))
         {
             return;
         }
