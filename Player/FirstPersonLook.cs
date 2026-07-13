@@ -11,6 +11,7 @@ public class FirstPersonLook : NetworkBehaviour
     [SerializeField] private float minPitch = -80f;
     [SerializeField] private float maxPitch = 80f;
     [Tooltip("붙잡은 동안 좌우 시점을 제한할 좌우 각도")]
+    [Min(0f)]
     [SerializeField] private float grabbedYawRange = 80f;
     public Transform PlayerCameraTransform => playerCamera != null ? playerCamera.transform : cameraPivot;
     private float pitch;
