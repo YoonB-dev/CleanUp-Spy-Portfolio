@@ -21,7 +21,7 @@ public interface ICameraTool
 ///   2) 캡처 시점의 화면을 찍어서 Photo 프리팹으로 스폰
 /// </summary>
 [RequireComponent(typeof(PickupItem))]
-public class PolaroidCamera : NetworkBehaviour, ICameraTool
+public class PolaroidCamera : NetworkBehaviour, ICameraTool, ICustomCarryTransform
 {
     [Header("References")]
     [Tooltip("뷰파인더 화면에 실시간으로 그려주는 자식 카메라 (구멍 뒤 스크린용)")]
@@ -42,9 +42,9 @@ public class PolaroidCamera : NetworkBehaviour, ICameraTool
     private int jpgQuality = 60;
     private float ejectForce = 1.5f;
 
-    // 사진 에이밍 시 위치
-    private Vector3 _aimPosition = new Vector3(0f, 0.1f, 0.2f);
-    private float distanceFromCamera = 0.2f;
+    // 카메라 에임 시 위치 조정
+    private float carryDistanceAim = 0.8f;
+    private float carryHeightAim = 0.0f;
 
     private const int MAX_JPG_BYTE_SIZE = 512 * 1024;
 
@@ -96,6 +96,23 @@ public class PolaroidCamera : NetworkBehaviour, ICameraTool
                 _isEquipped.Value = actuallyHeld;
             }
         }
+    }
+
+    // ===== ICustomCarryTransform 구현 - PickupItem이 매 프레임 이걸 먼저 물어봄 =====
+
+    public bool TryGetCarryTransform(Transform cameraTransform, out Vector3 position, out Quaternion rotation)
+    {
+        if (!IsAiming)
+        {
+            // 조준 중이 아니면 "나는 특수 위치를 원하지 않는다" -> PickupItem이 기본 로직 사용
+            position = default;
+            rotation = default;
+            return false;
+        }
+
+        position = cameraTransform.position + cameraTransform.forward * carryDistanceAim + cameraTransform.up * carryHeightAim;
+        rotation = cameraTransform.rotation;
+        return true;
     }
 
     // ===== ICameraTool 구현 - holdItem이 든 아이템에서 이 인터페이스를 찾아 직접 호출 =====

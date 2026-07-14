@@ -88,9 +88,27 @@
                     "initialStateCheck": false
                 },
                 {
-                    "name": "Grab",
+                    "name": "CameraAim",
                     "type": "Button",
-                    "id": "4319d556-8878-41dd-ac88-dd5f46d01466",
+                    "id": "1073d568-5e3d-45ba-871e-db5733f56cfc",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "CameraShot",
+                    "type": "Button",
+                    "id": "637e6d1d-8939-4aa4-90af-43349079d454",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "Interaction-lignt",
+                    "type": "Button",
+                    "id": "f3bb6bf7-d870-43ce-8875-e7e965741eea",
                     "expectedControlType": "",
                     "processors": "",
                     "interactions": "",
@@ -243,12 +261,34 @@
                 },
                 {
                     "name": "",
-                    "id": "c7c9274a-9fd1-4496-a49a-43d2da2d5a47",
-                    "path": "<Keyboard>/g",
+                    "id": "50a3987b-8c7a-42a7-828d-d3cf8cedac5e",
+                    "path": "<Mouse>/rightButton",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
-                    "action": "Grab",
+                    "action": "CameraAim",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "619749fc-5f6d-49ea-8259-ac9bec637e9d",
+                    "path": "<Mouse>/leftButton",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "CameraShot",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "bd4040c9-9cbf-4211-adb8-4f4704ace9d7",
+                    "path": "<Keyboard>/e",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Interaction-lignt",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

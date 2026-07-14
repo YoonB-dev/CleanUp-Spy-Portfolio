@@ -5,19 +5,24 @@ using UnityEngine;
 [RequireComponent(typeof(PickupHighlight))]
 public class PickupItem : NetworkBehaviour
 {
+    [Header("Category")]
+    [Tooltip("TrashCan 등 범용 시스템이 이 값만 보고 처리 방식을 결정함")]
+    [SerializeField] private PickupCategory category = PickupCategory.Trash;
+    public PickupCategory Category => category;
+
     private Rigidbody _itemRigidbody;
     private Collider itemCollider;
     private PickupHighlight pickupHighlight;
     private float carryDistance = 1.6f;
     private float carryHeight = -0.5f;
-
-    // 카메라 에임 시 위치 조정 -> 이건 나중에 코드 분리할 여지가 있음
-    private float carryDistanceAim = 0.8f; 
-    private float carryHeightAim = 0.0f;
-
     private PlayerInteraction _holder; public PlayerInteraction Holder => _holder;
 
     private MeshRenderer[] _renderers; // 자식 오브젝트들까지 포함해서 다 끄기 위함
+
+    // 이 아이템이 커스텀 캐리 위치를 구현하는지 여부를 미리 캐싱 (매 프레임 GetComponent 방지)
+    private ICustomCarryTransform _customCarry;
+    private IPickupListener _pickupListener;
+
     public override void OnNetworkSpawn()
     {
         base.OnNetworkSpawn();
@@ -62,6 +67,9 @@ public class PickupItem : NetworkBehaviour
         }
 
         _renderers = GetComponentsInChildren<MeshRenderer>();
+        // 이 GameObject에 해당 인터페이스를 구현한 컴포넌트가 있으면 캐싱, 없으면 null
+        TryGetComponent(out _customCarry);
+        TryGetComponent(out _pickupListener);
     }
 
     public void SetHighlighted(bool highlighted)
@@ -91,26 +99,19 @@ public class PickupItem : NetworkBehaviour
         {
             Transform camTransform = player.PlayerCameraTransform;
 
-            if (camTransform != null)
+            // 이 아이템이 커스텀 캐리 위치를 원하는지 먼저 물어봄.
+            // PickupItem은 그게 "카메라 조준"인지 "무엇"인지 전혀 몰라도 됨 - 그냥 위치/회전만 받아서 적용.
+            if (_customCarry != null && _customCarry.TryGetCarryTransform(camTransform, out Vector3 customPos, out Quaternion customRot))
             {
-                // 카메라 사진 찍는거면 carryDistanceAim, carryHeightAim 적용 -> 이 부분도 나중에 코드 분리하긴 해야할듯
-                if (TryGetComponent<PolaroidCamera>(out var polaroidCamera) && polaroidCamera.IsAiming)
-                {
-                    Vector3 followPositionAim = camTransform.position + camTransform.forward * carryDistanceAim + camTransform.up * carryHeightAim;
-                    transform.position = followPositionAim;
-                    transform.rotation = camTransform.rotation;
-                    return;
-                }
-                // 2. 카메라의 정면(forward) 방향으로 carryDistance만큼 띄우고, 
-                // 카메라 기준의 정중앙에 위치시키기 위해 약간 아래나 위로 조절하고 싶다면 camTransform.up을 활용.
-                // (가운데 딱 맞추려면 Vector3.up * carryHeight 대신 살짝만 내리거나 0으로 두면 됨ㅇㅇ)
-                Vector3 followPosition = camTransform.position + camTransform.forward * carryDistance + camTransform.up * carryHeight;
-
-                transform.position = followPosition;
-
-                // 3. 아이템의 회전도 카메라가 바라보는 회전과 일치시킨다.
-                transform.rotation = camTransform.rotation;
+                transform.position = customPos;
+                transform.rotation = customRot;
+                return;
             }
+
+            // 기본 캐리 로직 (카메라 정면 carryDistance만큼 띄우고, carryHeight로 높이 조절)
+            Vector3 followPosition = camTransform.position + camTransform.forward * carryDistance + camTransform.up * carryHeight;
+            transform.position = followPosition;
+            transform.rotation = camTransform.rotation;
         }
         else
         {
@@ -144,10 +145,7 @@ public class PickupItem : NetworkBehaviour
         SetHighlighted(false);
         NetworkObject.ChangeOwnership(playerInteraction.OwnerClientId);
 
-        if (TryGetComponent<PlaceableBox>(out var placeableBox))
-        {
-            placeableBox.OnPickedUp(); // 이 안에서 Demolish()가 돌며 아랫장 연쇄 물리 연산 시동
-        }
+        _pickupListener?.OnPickedUp();
 
         if (_itemRigidbody != null)
         {

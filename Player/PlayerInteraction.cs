@@ -2,11 +2,13 @@ using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
+[RequireComponent(typeof(LightInteraction))]
 public class PlayerInteraction : NetworkBehaviour
 {
     [SerializeField] private Camera playerCamera;
     [SerializeField] private float interactDistance = 3f;
     private BoxPlacementPreview _placementPreview; // 박스 배치 프리뷰를 관리하는 컴포넌트(스크립트)
+    private RoleManager _roleManager; // 플레이어 역할 관리 컴포넌트
     private readonly NetworkVariable<NetworkObjectReference> _networkHeldItemRef = new(
         new NetworkObjectReference(),
         NetworkVariableReadPermission.Everyone,
@@ -15,10 +17,10 @@ public class PlayerInteraction : NetworkBehaviour
 
     // 마피아 페인트 총을 들고 있는지 여부를 나타내는 네트워크 변수
     public readonly NetworkVariable<bool> IsHoldingPaintGun = new(
-    false,
-    NetworkVariableReadPermission.Everyone,
-    NetworkVariableWritePermission.Server
-);
+        false,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server
+    );
 
     private PickupItem hoveredItem;
     private PickupItem _localCachedHeldItem; // 클라이언트 측에서 들고 있는 아이템을 캐싱하여 빠르게 접근할 수 있도록 함.
@@ -29,7 +31,12 @@ public class PlayerInteraction : NetworkBehaviour
             playerCamera = GetComponentInChildren<Camera>(true);
         }
         _placementPreview = GetComponent<BoxPlacementPreview>();
+        _roleManager = GetComponent<RoleManager>();
+        _lightInteraction = GetComponent<LightInteraction>();
     }
+
+    // 두꺼비집 관련 컴포넌트
+    private LightInteraction _lightInteraction;
     private void Update()
     {
         if (!IsOwner)
@@ -359,11 +366,39 @@ public class PlayerInteraction : NetworkBehaviour
 
     public void OnCapture(InputAction.CallbackContext context)
     {
+        if (!IsOwner) return;
         if (!context.performed) return;
         if (!IsHoldingItem()) return;
         var heldItem = GetSafeHeldItem();
         if (heldItem == null || !heldItem.TryGetComponent<PolaroidCamera>(out var cameraTool)) return;
 
         cameraTool.Capture();
+    }
+    // 두꺼비집 동작 콜백
+    public void OnToggleLight(InputAction.CallbackContext context)
+    {
+        if (!IsOwner) return;
+        if (IsHoldingPaintGun.Value || IsHoldingItem()) return;
+        if (_lightInteraction == null) return;
+
+        if (context.started)
+        {
+            if (playerCamera == null) return;
+
+            // 앞에 스위치가 있는지 레이캐스트 검사만 수행
+            if (Physics.Raycast(playerCamera.transform.position, playerCamera.transform.forward, out RaycastHit hit, interactDistance))
+            {
+                if (hit.collider.TryGetComponent<LightSwitch>(out LightSwitch lightSwitch))
+                {
+                    // 구체적인 처리는 새 컴포넌트에게 전임!
+                    _lightInteraction.StartLightInteraction(lightSwitch);
+                }
+            }
+        }
+        else if (context.canceled)
+        {
+            // 손 떼면 취소하라고 신호만 보냄
+            _lightInteraction.CancelLightInteraction();
+        }
     }
 }

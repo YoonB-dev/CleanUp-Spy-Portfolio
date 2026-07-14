@@ -11,17 +11,15 @@ public class TrashCan : NetworkBehaviour
     private void OnTriggerEnter(Collider other)
     {
         if (!IsServer) return;
-        // 들어온 오브젝트가 '들 수 있는 아이템(PickupItem)'인지 확인
-        // 확장성을 고려해서 Tag 대신 컴포넌트 기반으로 판단함.
-        if (other.TryGetComponent<PickupItem>(out PickupItem item))
+        if (!other.TryGetComponent<PickupItem>(out PickupItem item)) return;
+        // PlaceableBox를 직접 아는 대신, Category만 확인 (Trash가 아니면 무시).
+        // 새 아이템 종류가 늘어나도 이 파일은 건드릴 필요 없음 - 프리팹의 Category 값만 지정하면 됨.
+        if (item.Category != PickupCategory.Trash)
         {
-            // 일단은 PlaceableBox는 쓰레기통에 안들어가게 막음
-            if (item.TryGetComponent<PlaceableBox>(out _))
-            {
-                return;
-            }
-            ProcessItemDisposal(item);
+            return;
         }
+
+        ProcessItemDisposal(item);
     }
 
     private void ProcessItemDisposal(PickupItem item)
