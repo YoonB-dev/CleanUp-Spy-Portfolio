@@ -264,7 +264,7 @@ public class PlayerInteraction : NetworkBehaviour
     /// <summary>
     /// 네트워크 변수로부터 현재 들고 있는 PickupItem 컴포넌트를 안전하게 긁어옵니다.
     /// </summary>
-    private PickupItem GetCurrentHeldItem()
+    public PickupItem GetCurrentHeldItem()
     {
         if (!IsHoldingItem())
         {
@@ -343,5 +343,27 @@ public class PlayerInteraction : NetworkBehaviour
             if (context.performed) cleaner.SetCleaningInput(true);
             else if (context.canceled) cleaner.SetCleaningInput(false);
         }
+    }
+
+    // 폴라로이드 카메라
+    public void OnAim(InputAction.CallbackContext context)
+    {
+        if (!IsOwner) return;
+        if (!IsHoldingItem()) return;
+        var heldItem = GetSafeHeldItem();
+        if (heldItem == null || !heldItem.TryGetComponent<PolaroidCamera>(out var cameraTool)) return;
+
+        if (context.performed) cameraTool.Aim(true);
+        else if (context.canceled) cameraTool.Aim(false);
+    }
+
+    public void OnCapture(InputAction.CallbackContext context)
+    {
+        if (!context.performed) return;
+        if (!IsHoldingItem()) return;
+        var heldItem = GetSafeHeldItem();
+        if (heldItem == null || !heldItem.TryGetComponent<PolaroidCamera>(out var cameraTool)) return;
+
+        cameraTool.Capture();
     }
 }

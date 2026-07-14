@@ -71,6 +71,18 @@ public class MafiaDashSkill : NetworkBehaviour
         // 1. 제어권 회수
         SetPlayerControl(false);
 
+        if (TryGetComponent<PlayerInteraction>(out var playerInteraction))
+        {
+            if (playerInteraction.IsHoldingItem())
+            {
+                PickupItem heldItem = playerInteraction.GetCurrentHeldItem();
+                if (heldItem != null)
+                {
+                    heldItem.SetVisibility(false); // 쏙 숨기기
+                }
+            }
+        }
+
         Vector3 dashDirection = transform.forward;
         dashDirection.y = 0;
         dashDirection.Normalize();
@@ -93,6 +105,15 @@ public class MafiaDashSkill : NetworkBehaviour
         // 3. 복구 로직 (가장 중요)
         _rb.linearVelocity = Vector3.zero;
         _rb.isKinematic = true;
+
+        if (playerInteraction != null && playerInteraction.IsHoldingItem())
+        {
+            PickupItem heldItem = playerInteraction.GetCurrentHeldItem();
+            if (heldItem != null)
+            {
+                heldItem.SetVisibility(true); // 다시 보이게 하기
+            }
+        }
 
         // 4. 위치 동기화 강제 (Teleport)
         GetComponent<NetworkTransform>().Teleport(transform.position, transform.rotation, transform.localScale);
