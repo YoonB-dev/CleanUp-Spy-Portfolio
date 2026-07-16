@@ -13,6 +13,7 @@ using UnityEngine;
 public interface IPickupListener
 {
     void OnPickedUp();
+    void OnDropped();
 }
 
 /// <summary>

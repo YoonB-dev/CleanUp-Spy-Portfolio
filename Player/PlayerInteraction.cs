@@ -359,7 +359,6 @@ public class PlayerInteraction : NetworkBehaviour
         if (!IsHoldingItem()) return;
         var heldItem = GetSafeHeldItem();
         if (heldItem == null || !heldItem.TryGetComponent<PolaroidCamera>(out var cameraTool)) return;
-
         if (context.performed) cameraTool.Aim(true);
         else if (context.canceled) cameraTool.Aim(false);
     }

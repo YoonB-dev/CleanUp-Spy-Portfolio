@@ -3,7 +3,7 @@ using UnityEngine;
 
 [RequireComponent(typeof(PickupItem))]
 [RequireComponent(typeof(NetworkObject))]
-public class PlaceableBox : NetworkBehaviour
+public class PlaceableBox : NetworkBehaviour, IPickupListener
 {
     private Rigidbody rb;
     private Collider boxCollider;
@@ -75,6 +75,11 @@ public class PlaceableBox : NetworkBehaviour
     {
         if (!IsServer) return;
         Demolish();
+    }
+
+    public void OnDropped()
+    {
+        // 드롭 시 특별한 처리는 필요 없음. (박스는 그냥 떨어지게 둠)
     }
 
     /// <summary>

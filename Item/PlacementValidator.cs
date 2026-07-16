@@ -8,7 +8,6 @@ public static class PlacementValidator
     /// </summary>
     public static bool IsValidPlacement(Vector3 targetPos, PlacementZone zone, float boxSize, GameObject heldObjForIgnore = null)
     {
-        Debug.Log($"[PlacementValidator] Checking placement at {targetPos} with box size {boxSize} in zone {zone.name}");
         // 1. 영역 이탈 검사
         if (!IsPositionInsideZone(targetPos, zone, boxSize)) return false;
         // 2. 공간 비어있는지 검사

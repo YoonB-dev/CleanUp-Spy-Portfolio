@@ -20,6 +20,10 @@ public class FirstPersonLook : NetworkBehaviour
     private bool _yawLimited;
     private float _yawCenter;
 
+    // 클리핑 확대, 축소용 2개
+    private const float ORIGIN_CLIP = 0.3f; // 원래 세팅값 백업용
+    private const float NEAR_CLIP = 0.01f; // 카메라가 플레이어 몸체에 너무 가까이 붙었을 때, 카메라가 몸체를 뚫고 들어가는 현상을 방지하기 위해 Near Clip을 최소값으로 설정
+
     /// <summary>좌우 시점 제한 on/off. 켤 때의 좌우각을 중심으로 ±grabbedYawRange로 제한</summary>
     public void SetLookYawLimited(bool limited)
     {
@@ -92,5 +96,19 @@ public class FirstPersonLook : NetworkBehaviour
         {
             cameraPivot.localRotation = Quaternion.Euler(serverPitch, 0f, 0f);
         }
+    }
+
+    public void SetClipOrigin()
+    {
+        if (!IsOwner || playerCamera == null) return;
+
+        playerCamera.nearClipPlane = ORIGIN_CLIP;
+    }
+
+    public void SetClipNear()
+    {
+        if (!IsOwner || playerCamera == null) return;
+
+        playerCamera.nearClipPlane = NEAR_CLIP;
     }
 }

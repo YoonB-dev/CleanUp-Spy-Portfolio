@@ -11,7 +11,7 @@ public class MafiaDashSkill : NetworkBehaviour
     private float dashSpeed = 10.0f;
     private float dashDuration = 0.5f;
     private float dashCooldown = 1.0f;
-    private float thirdPersonOffset = 6.0f;
+    private float thirdPersonOffset = 4.0f;
     [SerializeField] private Animator animator;
     public bool isDashing = false;
     private bool _isRequestPending = false;
@@ -194,7 +194,7 @@ public class MafiaDashSkill : NetworkBehaviour
             // 3인칭 전환
             Quaternion targetRotation = Quaternion.Euler(15f, 0f, 0f);
             playerCameraPivot.transform.localRotation = targetRotation;
-            playerCameraPivot.transform.localPosition = _originalCamLocalPos - (Vector3.forward * thirdPersonOffset) + (Vector3.up * 2f);
+            playerCameraPivot.transform.localPosition = _originalCamLocalPos - (Vector3.forward * thirdPersonOffset) + (Vector3.up * 1.5f);
         }
         else
         {
