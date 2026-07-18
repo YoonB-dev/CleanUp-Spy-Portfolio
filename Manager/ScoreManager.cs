@@ -2,6 +2,9 @@ using TMPro;
 using Unity.Netcode;
 using UnityEngine;
 
+/// <summary>
+/// 점수 관련 클래스로 데이터와 UI를 관리한다.
+/// </summary>
 public class ScoreManager : NetworkBehaviour
 {
     public static ScoreManager Instance { get; private set; }

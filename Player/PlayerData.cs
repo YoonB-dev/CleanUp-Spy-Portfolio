@@ -30,8 +30,6 @@ public class PlayerData : NetworkBehaviour
         {
             return;
         }
-
-        PlayerSpawnManager.Instance?.RegisterPlayer(this);
     }
 
     public override void OnNetworkDespawn()
@@ -40,8 +38,6 @@ public class PlayerData : NetworkBehaviour
         {
             return;
         }
-
-        PlayerSpawnManager.Instance?.UnregisterPlayer(this);
     }
 
     public void SetServerSpawnPosition(Vector3 spawnPosition)

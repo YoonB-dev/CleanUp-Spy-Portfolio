@@ -29,6 +29,9 @@ public class PaintCleaner : NetworkBehaviour
 
     private void Update()
     {
+        // 네트워크 스폰이 완벽히 완료되지 않았다면 업데이트를 수행하지 않습니다
+        if (!IsSpawned) return;
+
         if (IsOwner)
         {
             // 내가 이 아이템의 소유자라면, 내 로컬 플레이어 캐릭터 컴포넌트를 주인으로 설정!
@@ -46,14 +49,14 @@ public class PaintCleaner : NetworkBehaviour
             // 서버(호스트) 시점에서는 PickupItem이 가지고 있는 _holder를 그대로 신뢰해도 됩니다.
             _currentHolder = _pickupItem.Holder;
         }
-        // 1. [공통] 현재 아무도 안 들고 있다면 청소 로직 완전 정지
+        // 1. 현재 아무도 안 들고 있다면 청소 로직 완전 정지
         if (_currentHolder == null)
         {
             _isCleaning = false;
             return;
         }
         
-        // 2. [로컬] 나를 들고 있는 실소유주(IsOwner)의 화면에서만 마우스 입력 및 레이캐스트 연산 수행
+        // 2. 나를 들고 있는 실소유주(IsOwner)의 화면에서만 마우스 입력 및 레이캐스트 연산 수행
         if (!IsOwner) return;
 
         // 주인이 페인트 총을 들고 있다면(마피아라면) 청소기 작동 방지

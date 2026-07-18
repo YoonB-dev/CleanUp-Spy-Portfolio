@@ -8,33 +8,25 @@ public class PlayerSpawnManager : SceneSingleton<PlayerSpawnManager>
 {
 
     [SerializeField] private Transform spawnPoint;
-    [SerializeField] private Vector2 spawnRange = new(3f, 3f);
+    [SerializeField] private Vector2 spawnRange = new(1f, 1f);
     [SerializeField] private float spawnHeight = 2f;
 
-    private readonly List<PlayerData> registeredPlayers = new();
-    public void RegisterPlayer(PlayerData playerMovement)
+    public void SetRandomPosition(Transform targetTransform)
     {
-        if (playerMovement == null || registeredPlayers.Contains(playerMovement))
-        {
-            return;
-        }
+        if (targetTransform == null) return;
 
-        registeredPlayers.Add(playerMovement);
         Vector3 spawnPosition = GetRandomSpawnPosition();
-        playerMovement.SetServerSpawnPosition(spawnPosition);
-    }
-
-    public void UnregisterPlayer(PlayerData playerMovement)
-    {
-        if (playerMovement == null)
+        if (targetTransform.TryGetComponent<Unity.Netcode.Components.NetworkTransform>(out var netTransform))
         {
-            return;
+            targetTransform.position = spawnPosition;
         }
-
-        registeredPlayers.Remove(playerMovement);
+        else
+        {
+            targetTransform.position = spawnPosition;
+        }
     }
 
-    private Vector3 GetRandomSpawnPosition()
+    public Vector3 GetRandomSpawnPosition()
     {
         float randomX = Random.Range(-spawnRange.x, spawnRange.x);
         float randomZ = Random.Range(-spawnRange.y, spawnRange.y);

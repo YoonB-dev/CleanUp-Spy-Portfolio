@@ -2,7 +2,6 @@ using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-[RequireComponent(typeof(LightInteraction))]
 public class PlayerInteraction : NetworkBehaviour
 {
     [SerializeField] private Camera playerCamera;
