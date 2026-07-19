@@ -5,16 +5,29 @@ using UnityEngine.InputSystem;
 [RequireComponent(typeof(RoleManager))]
 public class MafiaActionTrash : NetworkBehaviour
 {
+    [Header("Mafia Trash Actoin Settings")]
+    [SerializeField] private GameObject trashPrefab;
+    private const float abilityCoolTime = 2f; // 마피아 능력 쿨타임
     private float _currentCoolTime = 0f;
+    private float _serverCoolTime = 0f; // 서버용 실제 쿨타임 타이머
     private RoleManager _roleManager;
-    private void Awake() => _roleManager = GetComponent<RoleManager>();
+    private PlayerInteraction _playerInteraction;
+    [SerializeField] private Transform _playerCameraTransform;
+    private void Awake() {
+        _roleManager = GetComponent<RoleManager>(); 
+        _playerInteraction = GetComponent<PlayerInteraction>();
+    }
 
     private void Update()
     {
-        if (!IsOwner) return;
+        // 서버는 무조건 서버 쿨타임 관리
+        if (IsServer && _serverCoolTime > 0)
+        {
+            _serverCoolTime -= Time.deltaTime;
+        }
 
-        // 로컬 쿨타임은 오직 화면 UI 게이지를 부드럽게 줄이기 위한 용도로만 사용.
-        if (_currentCoolTime > 0)
+        // 로컬 플레이어는 로컬 쿨타임 관리 (UI용임)
+        if (IsOwner && _currentCoolTime > 0)
         {
             _currentCoolTime -= Time.deltaTime;
         }
@@ -28,13 +41,65 @@ public class MafiaActionTrash : NetworkBehaviour
         if (_currentCoolTime > 0) return;
 
         // 서버에게 "쓰레기 소환 요청" RPC를 보냄. (서버에서 진짜로 마피아인지 확인 후 승인)
-        transform.GetComponent<PlayerInteraction>().RequestSpawnTrashServerRpc();
+        RequestSpawnTrashServerRpc();
     }
 
-    // 서버가 승인해 주었을 때 호출되어 진짜로 로컬 타이머를 돌리는 함수
-    public void StartLocalCooldown(float duration)
+    [ServerRpc]
+    private void RequestSpawnTrashServerRpc(ServerRpcParams rpcParams = default)
     {
-        _currentCoolTime = duration;
-        Debug.Log($"[로컬] 서버 승인 완료! {duration}초 쿨타임 UI 시작.");
+        if (_roleManager.CurrentRole != PlayerRole.Mafia || _serverCoolTime > 0 || _playerInteraction == null) return;
+
+        // --- 쓰레기 생성 흐름 ---
+        Vector3 spawnPosition = _playerCameraTransform.position + (_playerCameraTransform.forward * 1.5f) + (Vector3.up * -0.3f);
+        GameObject trashMafia = Instantiate(trashPrefab, spawnPosition, Quaternion.identity);
+        NetworkObject trashNetObj = trashMafia.GetComponent<NetworkObject>();
+
+        if (trashNetObj != null)
+        {
+            trashNetObj.Spawn(); // 네트워크 스폰
+
+            NetworkObjectReference netObjRef = new NetworkObjectReference(trashNetObj);
+            _playerInteraction.PickupLogicalServer(netObjRef, true);
+
+            if (IsItemSuccessfullyPickedUp(trashNetObj))
+            {
+                _serverCoolTime = abilityCoolTime;
+                StartLocalCooldownClientRpc(abilityCoolTime);
+            }
+            else
+            {
+                // 인벤토리가 꽉 찼거나 검증 실패로 못 주웠다면 깔끔하게 스폰 롤백
+                trashNetObj.Despawn();
+                Destroy(trashMafia);
+                Debug.LogWarning($"[Server] {gameObject.name} 인벤토리가 부족하거나 주울 수 없어 생성 롤백.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// 방금 생성한 아이템이 플레이어의 인벤토리 3개 슬롯 중 하나에 정상적으로 들어갔는지 체크
+    /// </summary>
+    private bool IsItemSuccessfullyPickedUp(NetworkObject targetNetObj)
+    {
+        var inv = _playerInteraction.Inventory;
+        if (inv == null) return false;
+
+        bool inSlot1 = inv.Slot1.Value.TryGet(out var o1) && o1 == targetNetObj;
+        bool inSlot2 = inv.Slot2.Value.TryGet(out var o2) && o2 == targetNetObj;
+        bool inSlot3 = inv.Slot3.Value.TryGet(out var o3) && o3 == targetNetObj;
+
+        return inSlot1 || inSlot2 || inSlot3;
+    }
+
+    // 서버가 승인했을 때 클라이언트(Owner)에게 쿨타임 UI를 돌리라고 신호를 줌
+    [ClientRpc]
+    private void StartLocalCooldownClientRpc(float duration)
+    {
+        // 오직 이 캐릭터를 조종하는 로컬 플레이어만 UI 타이머를 작동시킴
+        if (IsOwner)
+        {
+            _currentCoolTime = duration;
+            Debug.Log($"[로컬] 서버 승인 완료! {duration}초 쿨타임 UI 시작.");
+        }
     }
 }

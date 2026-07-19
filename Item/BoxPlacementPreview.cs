@@ -111,7 +111,7 @@ public class BoxPlacementPreview : MonoBehaviour
                 if (dynamicPreviewInstance != null)
                 {
                     dynamicPreviewInstance.transform.position = targetPosition;
-                    dynamicPreviewInstance.transform.localScale = heldItem.transform.localScale;
+                    dynamicPreviewInstance.transform.localScale = heldItem.transform.localScale * 2.0f; // 플레이어 스케일이 2라서 그거 맞춰서 한거임
                     dynamicPreviewInstance.transform.rotation = Quaternion.identity;
                     dynamicPreviewInstance.SetActive(true);
                 }
@@ -136,17 +136,9 @@ public class BoxPlacementPreview : MonoBehaviour
         dynamicPreviewInstance.layer = LayerMask.NameToLayer("Ignore Raycast");
 
         // 매쉬 찾기
-        MeshFilter originalMeshFilter = originalObj.GetComponent<MeshFilter>();
-        if (originalMeshFilter == null)
-        {
-            originalMeshFilter = originalObj.GetComponentInChildren<MeshFilter>(true);
-        }
-        MeshRenderer originalMeshRenderer = originalObj.GetComponent<MeshRenderer>();
-        if (originalMeshRenderer == null)
-        {
-            originalMeshRenderer = originalObj.GetComponentInChildren<MeshRenderer>(true);
-        }
-
+        MeshFilter originalMeshFilter = originalObj.GetComponentInChildren<MeshFilter>(true);
+        MeshRenderer originalMeshRenderer = originalObj.GetComponentInChildren<MeshRenderer>(true);
+        
         if (originalMeshFilter != null && originalMeshRenderer != null)
         {
             MeshFilter previewFilter = dynamicPreviewInstance.AddComponent<MeshFilter>();

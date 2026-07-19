@@ -60,7 +60,7 @@ public class PaintCleaner : NetworkBehaviour
         if (!IsOwner) return;
 
         // 주인이 페인트 총을 들고 있다면(마피아라면) 청소기 작동 방지
-        if (_currentHolder.IsHoldingPaintGun.Value)
+        if (_currentHolder.Inventory != null && _currentHolder.Inventory.CurrentSlot == 4)
         {
             _isCleaning = false;
             return;
@@ -114,7 +114,7 @@ public class PaintCleaner : NetworkBehaviour
         }
 
         // 마피아 총 검증
-        if (_currentHolder.IsHoldingPaintGun.Value) return;
+        if (_currentHolder.Inventory != null && _currentHolder.Inventory.CurrentSlot == 4) return;
 
         ApplyCleanClientRpc(surfaceId, uv, radius);
     }

@@ -22,6 +22,12 @@ public class RoleManager : NetworkBehaviour
         if (IsServer)
         {
             RoleAssignmentManager.Instance?.RegisterPlayer(this);
+            RoleAssignmentManager.Instance?.ForceAssignRole(OwnerClientId, PlayerRole.Mafia); // 테스트용 강제 마피아 배정
+        }
+
+        if (IsLocalPlayer)
+        {
+            InventoryUIController.Instance?.Slot4SetActive(CurrentRole == PlayerRole.Mafia);
         }
 
         RoleChanged?.Invoke(CurrentRole);
@@ -51,5 +57,9 @@ public class RoleManager : NetworkBehaviour
     private void OnCurrentRoleChanged(PlayerRole previousRole, PlayerRole newRole)
     {
         RoleChanged?.Invoke(newRole);
+        if (IsLocalPlayer)
+        {
+            InventoryUIController.Instance?.Slot4SetActive(newRole == PlayerRole.Mafia);
+        }
     }
 }

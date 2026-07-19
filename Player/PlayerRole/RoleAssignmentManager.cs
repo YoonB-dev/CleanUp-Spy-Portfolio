@@ -110,4 +110,19 @@ public class RoleAssignmentManager : NetworkBehaviour
         }
         return false;
     }
+
+    // 테스트용: 플레이어에게 직업을 강제함
+    public void ForceAssignRole(ulong clientId, PlayerRole role)
+    {
+        foreach (var roleManager in registeredPlayers)
+        {
+            if (roleManager != null && roleManager.OwnerClientId == clientId)
+            {
+                roleManager.AssignRole(role);
+                Debug.Log($"[RoleAssignmentManager] 강제 직업 배정 -> ClientId: {clientId}, Role: {role}");
+                return;
+            }
+        }
+        Debug.LogWarning($"[RoleAssignmentManager] 강제 직업 배정 실패: ClientId {clientId}를 찾을 수 없습니다.");
+    }
 }

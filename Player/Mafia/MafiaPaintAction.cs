@@ -17,20 +17,62 @@ public class MafiaPaintAction : NetworkBehaviour
     [Tooltip("브러시 반경 (표면 UV 기준, 0~1 사이 값)")]
     [SerializeField] private float brushRadius = 0.02f;
     [SerializeField] private LayerMask paintableLayers;
-
-    private PlayerInteraction _playerInteraction;
+    private PlayerInventory _inventory;
+    private RoleManager _roleManager;
     private Camera _playerCamera;
 
     private float _nextFireTime;
-    private bool _isPaintEquip = false; // 현재 총을 꺼냈는지 여부
     private bool _isFiring = false;     // 현재 마우스를 누르고 있는지 여부
 
     private void Awake()
     {
-        _playerInteraction = GetComponent<PlayerInteraction>();
+        _roleManager = GetComponent<RoleManager>();
         _playerCamera = GetComponentInChildren<Camera>(true);
+        _inventory = GetComponent<PlayerInventory>();
 
         if (paintGunObject != null) paintGunObject.SetActive(false); // 처음엔 꺼둠
+    }
+
+    public override void OnNetworkSpawn()
+    {
+        if (_inventory != null)
+        {
+            _inventory.CurrentSlotNetworkVariable.OnValueChanged += OnInventorySlotChanged;
+
+            // 방 중간 입장 유저나 초기 세팅을 위해 강제 한 번 실행
+            UpdatePaintGunVisual(_inventory.CurrentSlot);
+        }
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        if (_inventory != null)
+        {
+            _inventory.CurrentSlotNetworkVariable.OnValueChanged -= OnInventorySlotChanged;
+        }
+    }
+
+    private void OnInventorySlotChanged(int previousValue, int newValue)
+    {
+        UpdatePaintGunVisual(newValue);
+    }
+
+
+    private void UpdatePaintGunVisual(int currentSlot)
+    {
+        // 마피아이고 슬롯이 4번일 때만 총이 보여야 함
+        bool shouldShow = (currentSlot == 4 && _roleManager != null && _roleManager.CurrentRole == PlayerRole.Mafia);
+
+        if (paintGunObject != null)
+        {
+            paintGunObject.SetActive(shouldShow);
+        }
+
+        // 총이 해제되었다면 쏘고 있던 입력 상태도 강제 초기화
+        if (!shouldShow)
+        {
+            _isFiring = false;
+        }
     }
 
     #region [총 꺼내기 / 집어넣기]
@@ -38,52 +80,19 @@ public class MafiaPaintAction : NetworkBehaviour
     public void OnSpawnPaintgun(InputAction.CallbackContext context)
     {
         if (!IsOwner || !context.started) return;
+        if (_roleManager != null && _roleManager.CurrentRole != PlayerRole.Mafia) return;
 
-        // 이미 다른 일반 아이템을 들고 있다면 총을 꺼내지 못하게 막음
-        if (!_isPaintEquip && _playerInteraction != null && _playerInteraction.IsHoldingItem())
+
+        if (_inventory != null)
         {
-            Debug.Log("이미 물건을 들고 있어 페인트 총을 꺼낼 수 없습니다.");
-            return;
+            // 현재 실제 인벤토리 슬롯이 4번(페인트총)인지 체크
+            bool isHoldingPaintGunNow = (_inventory.CurrentSlot == 4);
+            int targetSlot = isHoldingPaintGunNow ? 0 : 4;
+
+            // 인벤토리에 슬롯 변경을 요청 (이 요청이 서버를 거쳐 NetworkVariable을 바꿈)
+            _inventory.ExecuteSlotChange(targetSlot);
         }
-
-        // 상태 전환
-        _isPaintEquip = !_isPaintEquip;
-
-        // 총을 집어넣는다면 쏘고 있던 상태도 강제로 해제
-        if (!_isPaintEquip)
-        {
-            _isFiring = false;
-        }
-
-        // 1. [로컬] 내 화면에서 즉시 총을 켜고/끄기
-        TogglePaintgunLocal(_isPaintEquip);
-
-        // 2. [서버/클라이언트] 다른 사람들에게도 내 총 상태 동기화 및 NetworkVariable 변경
-        TogglePaintgunServerRpc(_isPaintEquip);
     }
-
-    private void TogglePaintgunLocal(bool isOut)
-    {
-        if (paintGunObject != null) paintGunObject.SetActive(isOut);
-    }
-
-    [ServerRpc]
-    private void TogglePaintgunServerRpc(bool isOut)
-    {
-        if (_playerInteraction != null)
-        {
-            _playerInteraction.IsHoldingPaintGun.Value = isOut;
-        }
-        TogglePaintgunClientRpc(isOut);
-    }
-
-    [ClientRpc]
-    private void TogglePaintgunClientRpc(bool isOut)
-    {
-        if (IsOwner) return; // 주인은 위에서 이미 처리했으므로 패스
-        if (paintGunObject != null) paintGunObject.SetActive(isOut);
-    }
-
     #endregion
 
     #region [페인트 발사 로직]
@@ -93,7 +102,7 @@ public class MafiaPaintAction : NetworkBehaviour
         if (!IsOwner) return;
 
         // 총을 꺼낸 상태일 때만 마우스 클릭 입력을 받음
-        if (!_isPaintEquip)
+        if (_inventory == null || _inventory.CurrentSlot != 4)
         {
             _isFiring = false;
             return;
@@ -106,7 +115,7 @@ public class MafiaPaintAction : NetworkBehaviour
     private void Update()
     {
         // 내 오브젝트이고, 총을 꺼냈고, 마우스를 누르고 있는 3가지 조건이 다 맞을 때만 작동
-        if (!IsOwner || !_isPaintEquip || !_isFiring) return;
+        if (!IsOwner || _inventory == null || _inventory.CurrentSlot != 4 || !_isFiring) return;
         if (Time.time < _nextFireTime) return;
         _nextFireTime = Time.time + fireRate;
 
@@ -146,6 +155,5 @@ public class MafiaPaintAction : NetworkBehaviour
     {
         // 스크립트가 꺼지거나 플레이어가 사망/종료 시 상태 리셋
         _isFiring = false;
-        _isPaintEquip = false;
     }
 }

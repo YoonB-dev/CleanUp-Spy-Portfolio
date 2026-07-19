@@ -10,6 +10,7 @@ public class NetworkConnect : MonoBehaviour
     [SerializeField] private Button hostButton;
     [SerializeField] private Button clientButton;
     [SerializeField] private string lobbySceneName = "LobbyScene";
+    [Min(0f)]
     public int MaxPlayers { get; set; } = 4;
     // 접속 실패 부분
     [SerializeField] private TMP_Text statusText;

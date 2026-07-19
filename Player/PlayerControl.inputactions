@@ -34,9 +34,18 @@
                     "initialStateCheck": true
                 },
                 {
-                    "name": "Interaction",
+                    "name": "Interaction_PickItem",
                     "type": "Button",
                     "id": "b6b75714-69a9-492c-8588-fde90865a1d2",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "DropItem",
+                    "type": "Button",
+                    "id": "b525d19d-342b-449d-91b8-c315aeff074b",
                     "expectedControlType": "",
                     "processors": "",
                     "interactions": "",
@@ -118,6 +127,33 @@
                     "name": "OpenLobbyMenu",
                     "type": "Button",
                     "id": "c89b7621-1118-4d1f-9cc4-c7e6007153d1",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "Slot_1",
+                    "type": "Button",
+                    "id": "15c5702e-8d03-4dad-9773-21d853291cc0",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "Slot_2",
+                    "type": "Button",
+                    "id": "f98f9cb9-bdde-4cda-b935-c0da2d095f70",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "Slot_3",
+                    "type": "Button",
+                    "id": "630868e4-2199-4e15-9837-286528d4f078",
                     "expectedControlType": "",
                     "processors": "",
                     "interactions": "",
@@ -209,7 +245,7 @@
                     "interactions": "",
                     "processors": "",
                     "groups": "",
-                    "action": "Interaction",
+                    "action": "Interaction_PickItem",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },
@@ -238,7 +274,7 @@
                 {
                     "name": "",
                     "id": "cca22100-2448-4dff-819a-7cd4c0d46b4d",
-                    "path": "<Keyboard>/2",
+                    "path": "<Keyboard>/4",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
@@ -309,6 +345,50 @@
                     "processors": "",
                     "groups": "",
                     "action": "OpenLobbyMenu",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "1a5e89e5-8d8a-4a55-836d-4211b88b77f9",
+                    "path": "<Keyboard>/1",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Slot_1",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "dde100b7-6021-475b-b26a-2a24fb698e5b",
+                    "path": "<Keyboard>/2",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Slot_2",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "292d2904-98bb-4858-86f6-4b6cc39c412c",
+                    "path": "<Keyboard>/3",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Slot_3",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "11042577-a573-4cd6-a794-ac06f52b54b7",
+                    "path": "<Keyboard>/q",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "DropItem",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

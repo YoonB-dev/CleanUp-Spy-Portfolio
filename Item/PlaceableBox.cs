@@ -8,7 +8,7 @@ public class PlaceableBox : NetworkBehaviour, IPickupListener
     private Rigidbody rb;
     private Collider boxCollider;
     private PickupItem pickupItem;
-    private float boxSize = 1.0f;
+    private float boxSize = 1.0f; // 검사 일단 2배함 (플레이어 스케일에 따라서)
     // 무너짐 연출용 변수
     private float randomPushForce = 3.0f;  // 양옆으로 튕기는 힘의 세기
     private float randomTorqueForce = 1.0f; // 회전하며 떨어지는 힘의 세기
@@ -74,7 +74,8 @@ public class PlaceableBox : NetworkBehaviour, IPickupListener
     public void OnPickedUp()
     {
         if (!IsServer) return;
-        Demolish();
+        
+        Demolish(isPickedUp: true); // 서버에서 무너짐 처리
     }
 
     public void OnDropped()
@@ -86,7 +87,7 @@ public class PlaceableBox : NetworkBehaviour, IPickupListener
     /// 이 박스의 고정 상태를 해제하고 물리력을 완전히 되돌린다.
     /// 여기서 점수 해제 및 연쇄 무너짐 처리를 담당.
     /// </summary>
-    public void Demolish()
+    public void Demolish(bool isPickedUp = false)
     {
         if (!IsServer) return;
         if (_isPlacedNet.Value == false)
@@ -98,30 +99,45 @@ public class PlaceableBox : NetworkBehaviour, IPickupListener
         RefreshTagLocal(false);
         gameObject.tag = "Untagged"; // 태그 원상복구
 
-        if (rb != null)
+        if (isPickedUp)
         {
-            rb.isKinematic = false; // 물리 엔진 재가동 (추락 시작)
-            rb.useGravity = true;
-
-            // 랜덤한 힘과 회전을 주어 자연스럽게 무너지는 연출
-            Vector3 randomDirection = new Vector3(
-                Random.Range(-1.0f, 1.0f),
-                Random.Range(0.1f, 0.5f), // 아주 살짝 위로 통 튀튀하게 Y축 양수 부여
-                Random.Range(-1.0f, 1.0f)
-            ).normalized;
-
-            // 1. 순간적인 충격 힘(Impulse)을 주어 옆으로 튕겨 나가게 만듭니다.
-            rb.AddForce(randomDirection * randomPushForce, ForceMode.Impulse);
-
-            // 2. 상자가 돌면서 떨어지도록 무작위 회전력(Torque)도 살짝 가해줍니다.
-            Vector3 randomTorque = new Vector3(
-                Random.Range(-1.0f, 1.0f),
-                Random.Range(-1.0f, 1.0f),
-                Random.Range(-1.0f, 1.0f)
-            ).normalized;
-            rb.AddTorque(randomTorque * randomTorqueForce, ForceMode.Impulse);
+            // 내가 직접 주운 박스는 손에 붙어야 하므로 물리 엔진을 완벽하게 잠급니다.
+            if (rb != null)
+            {
+                rb.isKinematic = false; 
+                rb.linearVelocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+                rb.isKinematic = true;
+                rb.useGravity = false;
+            }
         }
+        else
+        {
+            if (rb != null)
+            {
+                rb.isKinematic = false; // 물리 엔진 재가동 (추락 시작)
+                rb.useGravity = true;
 
+                // 랜덤한 힘과 회전을 주어 자연스럽게 무너지는 연출
+                Vector3 randomDirection = new Vector3(
+                    Random.Range(-1.0f, 1.0f),
+                    Random.Range(0.1f, 0.5f), // 아주 살짝 위로 통 튀튀하게 Y축 양수 부여
+                    Random.Range(-1.0f, 1.0f)
+                ).normalized;
+
+                // 1. 순간적인 충격 힘(Impulse)을 주어 옆으로 튕겨 나가게 만듭니다.
+                rb.AddForce(randomDirection * randomPushForce, ForceMode.Impulse);
+
+                // 2. 상자가 돌면서 떨어지도록 무작위 회전력(Torque)도 살짝 가해줍니다.
+                Vector3 randomTorque = new Vector3(
+                    Random.Range(-1.0f, 1.0f),
+                    Random.Range(-1.0f, 1.0f),
+                    Random.Range(-1.0f, 1.0f)
+                ).normalized;
+                rb.AddTorque(randomTorque * randomTorqueForce, ForceMode.Impulse);
+            }
+        }
+        
         // 점수 차감
         ScoreManager.Instance?.SubtractBoxScore();
 
@@ -150,6 +166,18 @@ public class PlaceableBox : NetworkBehaviour, IPickupListener
         // 서버가 _isPlacedNet을 false로 바꾸면, 클라이언트도 물리 엔진을 켭니다.
         if (!newValue)
         {
+            if (pickupItem != null && (pickupItem.IsHeld || pickupItem.Holder != null))
+            {
+                if (rb != null)
+                {
+                    rb.linearVelocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                    rb.isKinematic = true;  // 키네마틱을 강제로 유지합니다.
+                    rb.useGravity = false;  // 중력도 확실하게 꺼줍니다.
+                }
+                return; // 물리 엔진을 켜지 않고 여기서 함수를 끝냄
+            }
+
             if (rb != null)
             {
                 rb.isKinematic = false;
