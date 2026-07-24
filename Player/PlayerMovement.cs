@@ -13,13 +13,15 @@ public class PlayerMovement : NetworkBehaviour
     private float jumpForce = 2f;
     private float gravity = -9.81f * 2f;
     [SerializeField] private LayerMask groundLayer;
-    private Vector2 serverMoveInput;
+    private Vector2 _serverMoveInput;
+    public Vector2 MoveInput => _serverMoveInput;
     private float verticalVelocity;
 
     private const float GRAB_DRAG_SPEED = 20f;             // 붙잡혔을 때 끌려오는 최대 속도
     private const float GRAB_VERTICAL_FOLLOW = 0.5f;       // 붙잡은 사람 높이 따라가는 비율(점프 시 위로 딸려옴)
     private const float GRAB_HOLD_MOVE_MULTIPLIER = 0.6f;  // 붙잡고 있을 때 이동속도 배율
     private PlayerGrab _playerGrab;
+    private GameObject _ownedRagdoll;   // 월드 공간으로 분리된 액티브 래그돌 (Player 소유)
 
     private void Awake()
     {
@@ -29,6 +31,20 @@ public class PlayerMovement : NetworkBehaviour
         }
 
         _playerGrab = GetComponent<PlayerGrab>();
+    }
+
+    /// <summary>월드 공간 래그돌의 소유권 등록. Player 파괴 시 함께 정리된다.</summary>
+    public void RegisterOwnedRagdoll(GameObject ragdoll)
+    {
+        _ownedRagdoll = ragdoll;
+    }
+
+    private void OnDestroy()
+    {
+        if (_ownedRagdoll != null)
+        {
+            Destroy(_ownedRagdoll);
+        }
     }
 
     private void Update()
@@ -54,7 +70,7 @@ public class PlayerMovement : NetworkBehaviour
         }
         else
         {
-            Vector3 move = new Vector3(serverMoveInput.x, 0f, serverMoveInput.y);
+            Vector3 move = new Vector3(_serverMoveInput.x, 0f, _serverMoveInput.y);
             move = transform.right * move.x + transform.forward * move.z;
             move *= moveSpeed;
 
@@ -72,7 +88,7 @@ public class PlayerMovement : NetworkBehaviour
         if (animator != null)
         {
             // 입력 벡터의 크기를 계산 (정지: 0, 이동중: 1)
-            float inputSpeed = serverMoveInput.magnitude;
+            float inputSpeed = _serverMoveInput.magnitude;
             // Animator의 'Speed' 파라미터에 값을 세팅, 서버 권한형이므로 서버가 이 값을 바꾸면 NetworkAnimator가 전 클라이언트에 동기화
             SetAnimationSpeedClientRpc(inputSpeed);
         }
@@ -122,6 +138,7 @@ public class PlayerMovement : NetworkBehaviour
         }
 
         Vector2 input = context.ReadValue<Vector2>();
+        _serverMoveInput = input;
         SubmitMoveServerRpc(input);
     }
 
@@ -141,7 +158,7 @@ public class PlayerMovement : NetworkBehaviour
     [ServerRpc]
     private void SubmitMoveServerRpc(Vector2 input)
     {
-        serverMoveInput = input;
+        _serverMoveInput = input;
     }
 
     [ServerRpc]

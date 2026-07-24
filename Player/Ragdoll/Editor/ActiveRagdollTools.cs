@@ -367,18 +367,13 @@ public static class ActiveRagdollTools
         Undo.RecordObject(driver, "조작 세팅");
         driver.Hips = FindBone(ragdoll.transform, "Hips");
         driver.Head = FindBone(ragdoll.transform, "Head");
-        driver.DriverCamera = Camera.main;
-
-        if (driver.DriverCamera == null)
-            Debug.LogWarning("Main Camera를 못 찾았다. 씬 카메라에 MainCamera 태그가 붙어 있는지 확인할 것.");
-
         // 조준 자세 + 걷기 흔들기
         if (ragdoll.GetComponent<RagdollPoser>() == null) Undo.AddComponent<RagdollPoser>(ragdoll);
 
         Selection.activeGameObject = ragdoll;
         Debug.Log(
             $"[조작 세팅] '{ragdoll.name}'에 RagdollDriver + RagdollPoser를 붙였다.\n" +
-            $"WASD 이동 / 마우스 시점 / Tab 1인칭↔3인칭 / Space 퍼펫모드 토글 / Esc 커서 해제\n" +
+            $"부모 플레이어의 이동·시점 상태를 사용한다.\n" +
             $"조준 각도·걷기 진폭은 Play 중에 RagdollPoser Inspector에서 맞출 것.", ragdoll);
     }
 

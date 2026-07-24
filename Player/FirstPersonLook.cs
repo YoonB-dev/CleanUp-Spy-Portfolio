@@ -14,9 +14,11 @@ public class FirstPersonLook : NetworkBehaviour
     [Min(0f)]
     [SerializeField] private float grabbedYawRange = 80f;
     public Transform PlayerCameraTransform => playerCamera != null ? playerCamera.transform : cameraPivot;
-    private float pitch;
-    private float yaw;
-    private Vector2 lookInput;
+    private float _pitch;
+    private float _yaw;
+    public float Pitch => _pitch;
+    public float Yaw => _yaw;
+    private Vector2 _lookInput;
     private bool _yawLimited;
     private float _yawCenter;
 
@@ -29,7 +31,7 @@ public class FirstPersonLook : NetworkBehaviour
     {
         if (limited && !_yawLimited)
         {
-            _yawCenter = yaw;   // 제한 시작 시점의 좌우각을 중심으로
+            _yawCenter = _yaw;   // 제한 시작 시점의 좌우각을 중심으로
         }
 
         _yawLimited = limited;
@@ -52,43 +54,46 @@ public class FirstPersonLook : NetworkBehaviour
         if (playerCamera != null) playerCamera.enabled = true;
         if (audioListener != null) audioListener.enabled = true;
 
-        yaw = transform.eulerAngles.y;
+        _yaw = transform.eulerAngles.y;
     }
 
     public void OnLook(InputAction.CallbackContext context)
     {
         if (!IsOwner || !enabled) return;
-        lookInput = context.ReadValue<Vector2>();
+        _lookInput = context.ReadValue<Vector2>();
     }
 
     private void LateUpdate()
     {
         if (!IsOwner) return;
 
-        float yawDelta = lookInput.x * mouseSensitivity;
-        float pitchDelta = lookInput.y * mouseSensitivity;
+        float yawDelta = _lookInput.x * mouseSensitivity;
+        float pitchDelta = _lookInput.y * mouseSensitivity;
 
-        yaw += yawDelta;
-        pitch -= pitchDelta;
-        pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
+        _yaw += yawDelta;
+        _pitch -= pitchDelta;
+        _pitch = Mathf.Clamp(_pitch, minPitch, maxPitch);
 
         if (_yawLimited)
         {
-            yaw = Mathf.Clamp(yaw, _yawCenter - grabbedYawRange, _yawCenter + grabbedYawRange);
+            _yaw = Mathf.Clamp(_yaw, _yawCenter - grabbedYawRange, _yawCenter + grabbedYawRange);
         }
 
         if (cameraPivot != null)
         {
-            cameraPivot.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+            cameraPivot.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
         }
 
-        transform.rotation = Quaternion.Euler(0f, yaw, 0f);
-        SendLookRotationServerRpc(yaw, pitch);
+        transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
+        SendLookRotationServerRpc(_yaw, _pitch);
     }
 
     [ServerRpc]
     private void SendLookRotationServerRpc(float serverYaw, float serverPitch)
     {
+        _yaw = serverYaw;
+        _pitch = serverPitch;
+
         // 서버에서도 해당 플레이어의 정체성과 카메라 각도를 똑같이 맞춰줍니다.
         transform.rotation = Quaternion.Euler(0f, serverYaw, 0f);
 
@@ -96,6 +101,15 @@ public class FirstPersonLook : NetworkBehaviour
         {
             cameraPivot.localRotation = Quaternion.Euler(serverPitch, 0f, 0f);
         }
+    }
+
+    /// <summary>지정 레이어를 이 카메라 렌더링에서 제외 (1인칭 자기 몸 가리기용)</summary>
+    /// <param name="layer">숨길 레이어 인덱스</param>
+    public void ExcludeLayerFromCamera(int layer)
+    {
+        if (playerCamera == null) return;
+
+        playerCamera.cullingMask &= ~(1 << layer);
     }
 
     public void SetClipOrigin()
