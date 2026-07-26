@@ -34,6 +34,15 @@
                     "initialStateCheck": true
                 },
                 {
+                    "name": "Grab",
+                    "type": "Button",
+                    "id": "f6018e28-93c0-42e0-8541-86510b9655b3",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
                     "name": "Interaction_PickItem",
                     "type": "Button",
                     "id": "b6b75714-69a9-492c-8588-fde90865a1d2",
@@ -389,6 +398,17 @@
                     "processors": "",
                     "groups": "",
                     "action": "DropItem",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "ca258e58-1b17-4f6e-943a-a4f9d18d7e69",
+                    "path": "<Keyboard>/g",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Grab",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

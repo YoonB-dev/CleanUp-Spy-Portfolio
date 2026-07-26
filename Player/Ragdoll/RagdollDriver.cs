@@ -338,6 +338,102 @@ public class RagdollDriver : MonoBehaviour
     }
 
     /// <summary>
+    /// 클라 전용: 물리 시뮬 없이 본을 kinematic으로 두고 네트워크 포즈 수신 대기
+    /// </summary>
+    private void SetupClientKinematic()
+    {
+        foreach (Rigidbody body in GetComponentsInChildren<Rigidbody>(true))
+        {
+            body.isKinematic = true;
+        }
+
+        // 클라 래그돌은 시각용이므로 콜라이더를 꺼 로컬 물리(동적 오브젝트)를 밀지 않게 한다
+        foreach (Collider bodyCollider in GetComponentsInChildren<Collider>(true))
+        {
+            bodyCollider.enabled = false;
+        }
+    }
+
+    /// <summary>
+    /// 오너 1인칭 카메라에서만 머리와 지정 렌더러를 숨김.
+    /// 원본은 숨김 레이어로 메인캠에서 제외하고 그림자는 ShadowsOnly 프록시가 대신 드리운다.
+    /// </summary>
+    private void HideOwnRenderersFromOwnerCamera()
+    {
+        if (!_firstPersonLook.IsOwner)
+        {
+            return;
+        }
+
+        foreach (Renderer renderer in GetComponentsInChildren<Renderer>(true))
+        {
+            if (!IsOwnerHidden(renderer.name))
+            {
+                continue;
+            }
+
+            CreateShadowProxy(renderer);
+            renderer.gameObject.layer = LOCAL_HIDDEN_LAYER;
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+        }
+
+        _firstPersonLook.ExcludeLayerFromCamera(LOCAL_HIDDEN_LAYER);
+    }
+
+    private bool IsOwnerHidden(string rendererName)
+    {
+        if (System.Array.IndexOf(OWNER_HIDDEN_RENDERER_NAMES, rendererName) >= 0)
+        {
+            return true;
+        }
+
+        return _ownerHiddenExtraRenderers != null &&
+               System.Array.IndexOf(_ownerHiddenExtraRenderers, rendererName) >= 0;
+    }
+
+    /// <summary>
+    /// 머리 렌더러를 복제해 보이는 레이어에서 그림자만 드리우는 프록시 생성.
+    /// SkinnedMesh 본은 외부 골격을 참조하므로 Instantiate 후에도 원본 골격에 따라 움직인다.
+    /// </summary>
+    private void CreateShadowProxy(Renderer source)
+    {
+        // source가 숨김 레이어로 바뀌기 전에 복제해 프록시는 보이는 레이어를 유지
+        GameObject proxy = Instantiate(source.gameObject, source.transform.parent);
+        proxy.name = source.name + "_ShadowProxy";
+        proxy.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.ShadowsOnly;
+    }
+
+    /// <summary>
+    /// 죽은 척 상태를 전환하고 좌표계 주도권을 변경
+    /// </summary>
+    /// <param name="isLimp">죽은 척 상태 여부</param>
+    public void SetLimp(bool isLimp)
+    {
+        if (_isLimp == isLimp)
+        {
+            return;
+        }
+
+        _isLimp = isLimp;
+
+        if (isLimp)
+        {
+            _wasMovementEnabled = _playerMovement.enabled;
+            _wasLookEnabled = _firstPersonLook.enabled;
+            _playerMovement.enabled = false;
+            _firstPersonLook.enabled = false;
+        }
+        else
+        {
+            SyncPlayerToRagdoll();
+            _playerMovement.enabled = _wasMovementEnabled;
+            _firstPersonLook.enabled = _wasLookEnabled;
+        }
+
+        ApplyAnchorDrives();
+    }
+
+    /// <summary>
     /// 골격 배치 기준 몸체 회전 계산
     /// </summary>
     private void ComputeBodyFrame()
@@ -438,22 +534,20 @@ public class RagdollDriver : MonoBehaviour
     /// <summary>
     /// 런타임 생성 앵커 제거
     /// </summary>
-    private void OnDestroy()
+    private void IgnoreArmTorsoCollision()
     {
-        if (_anchorRigidbody != null)
-        {
-            Destroy(_anchorRigidbody.gameObject);
-        }
-    }
+        Collider[] armColliders = CollectBoneColliders(ARM_BONE_NAMES);
+        Collider[] torsoColliders = CollectBoneColliders(TORSO_BONE_NAMES);
 
-    /// <summary>
-    /// 퍼펫 상태에 따른 앵커 위치 및 회전 Drive 갱신
-    /// </summary>
-    private void ApplyAnchorDrives()
-    {
-        if (_anchorJoint == null)
+        foreach (Collider arm in armColliders)
         {
-            return;
+            foreach (Collider torso in torsoColliders)
+            {
+                if (arm != null && torso != null)
+                {
+                    Physics.IgnoreCollision(arm, torso, true);
+                }
+            }
         }
 
         float weight = _isLimp ? 0f : 1f;
@@ -478,11 +572,16 @@ public class RagdollDriver : MonoBehaviour
     /// <summary>
     /// 플레이어 이동 및 시점 상태 갱신
     /// </summary>
-    private void Update()
+    /// <param name="boneNames">대상 골격 이름 목록</param>
+    /// <returns>수집된 Collider 배열</returns>
+    private Collider[] CollectBoneColliders(string[] boneNames)
     {
         if (_firstPersonLook == null)
         {
-            return;
+            foreach (Collider ragdollCollider in ragdollColliders)
+            {
+                Physics.IgnoreCollision(playerCollider, ragdollCollider, true);
+            }
         }
 
         _yaw = _firstPersonLook.Yaw;
@@ -492,7 +591,7 @@ public class RagdollDriver : MonoBehaviour
     /// <summary>
     /// 죽은 척 상태에서 Player 좌표계를 래그돌 몸체에 동기화
     /// </summary>
-    private void FixedUpdate()
+    private void ApplyAnchorDrives()
     {
         if (!IsServerAuthoritative || _playerTransform == null)
         {

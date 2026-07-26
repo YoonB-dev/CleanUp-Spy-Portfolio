@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Serialization;
 
 /// <summary>
 /// ConfigurableJoint에 보행 목표 회전 적용
@@ -23,10 +22,9 @@ public class RagdollPoser : MonoBehaviour
     private const string LEFT_SHIN_BONE_NAME = "Shin.L";
     private const string RIGHT_SHIN_BONE_NAME = "Shin.R";
 
-    [Header("관절")]
-    [FormerlySerializedAs("freeJointLimitsOnPlay")]
+    [Tooltip("시선 각도 중 머리가 따라가는 비율")]
     [SerializeField]
-    private bool _freeJointLimitsOnPlay = true;
+    private float _headPitchShare = 0.6f;
 
     [Header("시선 (상하)")]
     [SerializeField]
@@ -52,44 +50,46 @@ public class RagdollPoser : MonoBehaviour
     [SerializeField]
     private float _maxLookDownAngle = 45f;
 
-    [Header("걷기")]
-    [FormerlySerializedAs("walk")]
+    [Tooltip("팔을 T자세에서 아래로 내리는 각도. 이 자세로 앞뒤로 스윙")]
     [SerializeField]
-    private bool _isWalkEnabled = true;
+    private float _armDownAngle = 10f;
 
-    [FormerlySerializedAs("bpm")]
+    [Tooltip("걷기 스윙이 또렷이 보이도록 팔다리 관절을 구동하는 스프링")]
     [SerializeField]
-    private float _beatsPerMinute;
+    private float _limbPoseSpring = 2500f;
 
-    [FormerlySerializedAs("beatMode")]
+    [Tooltip("팔다리 관절 구동 감쇠")]
     [SerializeField]
-    private BeatMode _beatMode = BeatMode.StepPerBeat;
+    private float _limbPoseDamper = 80f;
 
-    [FormerlySerializedAs("stepFrequency")]
+    [Header("잡기 뻗기")]
+    [Tooltip("잡기 시 오른팔이 향할 몸통 기준 좌우각. 양수면 바깥쪽, 몸통을 벗어나게 살짝")]
     [SerializeField]
-    private float _stepFrequency = 2.7f;
+    [Range(-80f, 80f)]
+    private float _reachYaw = 25f;
 
-    [FormerlySerializedAs("phaseOffsetDeg")]
+    [Tooltip("잡기 시 오른팔이 향할 상하각. 양수면 아래. 시선연동이 켜지면 시선각에 가산")]
+    [SerializeField]
+    [Range(-70f, 70f)]
+    private float _reachPitch;
+
+    [Tooltip("뻗기 상하를 카메라 시선에 연동")]
+    [SerializeField]
+    private bool _reachFollowViewPitch = true;
+
+    [Tooltip("뻗은 팔을 장축 둘레로 비트는 각도. 손바닥이 아래를 보게 맞춤")]
     [SerializeField]
     [Range(-180f, 180f)]
-    private float _phaseOffsetDegrees;
+    private float _reachRoll;
 
-    [FormerlySerializedAs("thighSwing")]
-    [SerializeField]
-    private float _thighSwing = 30f;
-
-    [FormerlySerializedAs("shinSwing")]
-    [SerializeField]
-    private float _shinSwing = 30f;
-
-    [FormerlySerializedAs("armSwing")]
-    [SerializeField]
-    private float _armSwing = 25f;
+    // 뻗기 회전량이 반바퀴 특이점 근처에서 튀지 않도록 제한하는 안전각
+    private const float REACH_MAX_YAW = 80f;
+    private const float REACH_MAX_PITCH = 70f;
 
     [Tooltip("다리 스윙 회전축 (다리 로컬 기준 앞뒤 축)")]
     [FormerlySerializedAs("swingAxis")]
     [SerializeField]
-    private Vector3 _swingAxis = new Vector3(1f, 0f, 0f);
+    private float _reachRampSpeed = 10f;
 
     [Tooltip("팔을 T에서 아래로 내리는 각도 (0=T, 음수=T보다 위로). 이 자세를 유지한 채 앞뒤로 스윙")]
     [SerializeField]
@@ -222,17 +222,10 @@ public class RagdollPoser : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// 관절 각도 제한 해제
-    /// </summary>
-    private void ReleaseJointLimits()
-    {
-        foreach (BoneData bone in _bones.Values)
-        {
-            bone.Joint.angularXMotion = ConfigurableJointMotion.Free;
-            bone.Joint.angularYMotion = ConfigurableJointMotion.Free;
-            bone.Joint.angularZMotion = ConfigurableJointMotion.Free;
-        }
+        // 좌우 팔은 손 위치가 반대라 같은 부호로 돌려야 번갈아 스윙됨
+        Vector3 bodyUp = transform.rotation * Vector3.up;
+        AddArmPose(LEFT_UPPER_ARM_BONE_NAME, 1f, bodyUp);
+        AddArmPose(RIGHT_UPPER_ARM_BONE_NAME, 1f, bodyUp);
     }
 
     /// <summary>
@@ -253,11 +246,11 @@ public class RagdollPoser : MonoBehaviour
             _isWalkEnabled && isMoving ? 1f : 0f,
             4f * deltaTime);
 
-        _phase += GetStepFrequency() * Mathf.PI * 2f * deltaTime;
+        // 옆으로 뻗은 팔은 수직축 둘레로 돌려야 손이 앞뒤로 감
+        Vector3 swingLocalAxis = inverseWorld * bodyUp;
 
-        float swing =
-            Mathf.Sin(_phase + _phaseOffsetDegrees * Mathf.Deg2Rad) *
-            _walkWeight;
+        // 뻗기 계산용으로 팔 rest 회전을 몸통 프레임으로 환산해 저장
+        Quaternion reachBodyRest = Quaternion.Inverse(transform.rotation) * boneWorld;
 
         ApplyWalkPose(swing);
         ApplyLookPose();
@@ -280,13 +273,16 @@ public class RagdollPoser : MonoBehaviour
         ApplyRotation(HEAD_BONE_NAME, _lookPitchAxis * (pitch * _headPitchShare));
     }
 
-    /// <summary>
-    /// 초당 보행 주기 수 계산
-    /// </summary>
-    /// <returns>보행 주파수</returns>
-    private float GetStepFrequency()
+    // 걷기 스윙을 따라가도록 팔다리 관절 구동력을 높임 (기본 slerp는 약해 흐물거림)
+    private void StiffenLimbs()
     {
-        if (_beatsPerMinute <= 0f)
+        foreach (string boneName in new[]
+                 {
+                     LEFT_THIGH_BONE_NAME, RIGHT_THIGH_BONE_NAME,
+                     LEFT_SHIN_BONE_NAME, RIGHT_SHIN_BONE_NAME,
+                     LEFT_UPPER_ARM_BONE_NAME, RIGHT_UPPER_ARM_BONE_NAME,
+                     LEFT_FOREARM_BONE_NAME, RIGHT_FOREARM_BONE_NAME
+                 })
         {
             return _stepFrequency;
         }
@@ -331,42 +327,57 @@ public class RagdollPoser : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// 지정 관절에 초기 자세 기준 회전 오프셋 적용
-    /// </summary>
-    /// <param name="boneName">대상 골격 이름</param>
-    /// <param name="eulerOffset">초기 자세 기준 오일러 각도</param>
-    private void ApplyRotation(string boneName, Vector3 eulerOffset)
+    // 팔 장축을 몸통 기준 목표 방향에 맞추는 rest 대비 로컬 회전 델타. 롤은 몸통 up 기준 + roll 비틀림으로 고정
+    private static Quaternion BuildReachLocalOffset(
+        Quaternion reachBodyRest, float yaw, float pitch, float roll)
     {
-        if (!_bones.TryGetValue(boneName, out BoneData bone) ||
-            bone.Joint == null)
+        Vector3 armAxis =
+            (Quaternion.Euler(pitch, yaw, 0f) * Vector3.forward).normalized;
+
+        // 롤 기준으로 몸통 up을 장축에 직교하도록 투영
+        Vector3 upFace = Vector3.up - Vector3.Dot(Vector3.up, armAxis) * armAxis;
+        if (upFace.sqrMagnitude < 1e-4f)
         {
-            return;
+            upFace = Vector3.forward - Vector3.Dot(Vector3.forward, armAxis) * armAxis;
         }
 
-        bone.Joint.SetTargetRotationLocal(
-            bone.RestRotation * Quaternion.Euler(eulerOffset),
-            bone.RestRotation);
+        upFace.Normalize();
+
+        // 손바닥 방향을 맞추도록 장축 둘레로 추가 비틀기
+        Quaternion targetBody =
+            Quaternion.AngleAxis(roll, armAxis) * Quaternion.LookRotation(upFace, armAxis);
+        return Quaternion.Inverse(reachBodyRest) * targetBody;
     }
 
     private sealed class BoneData
     {
-        /// <summary>
-        /// 골격의 관절 및 초기 회전 저장
-        /// </summary>
-        /// <param name="joint">골격의 ConfigurableJoint</param>
-        /// <param name="restRotation">골격의 초기 로컬 회전</param>
-        public BoneData(
+        public ArmPose(
             ConfigurableJoint joint,
-            Quaternion restRotation)
+            Quaternion restRotation,
+            Quaternion lowerLocal,
+            Vector3 swingLocalAxis,
+            float sign,
+            Quaternion reachBodyRest)
         {
             Joint = joint;
             RestRotation = restRotation;
+            LowerLocal = lowerLocal;
+            SwingLocalAxis = swingLocalAxis;
+            Sign = sign;
+            ReachBodyRest = reachBodyRest;
         }
 
         public ConfigurableJoint Joint { get; }
 
         public Quaternion RestRotation { get; }
+
+        public Quaternion LowerLocal { get; }
+
+        public Vector3 SwingLocalAxis { get; }
+
+        public float Sign { get; }
+
+        public Quaternion ReachBodyRest { get; }
     }
 
     private sealed class ArmPose

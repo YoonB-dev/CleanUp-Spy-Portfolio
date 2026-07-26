@@ -1,19 +1,15 @@
+using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
 /// 다른 플레이어를 붙잡는 로직/네트워크(조준, 검증, 상태 동기화). 서버 권위 방식. <br/>
-/// 팔 뻗는 연출은 PlayerArmReach가 이 컴포넌트 상태를 읽어 처리
 /// </summary>
 public class PlayerGrab : NetworkBehaviour
 {
     [Header("조준")]
     [SerializeField] private Camera playerCamera;
-
-    [Header("붙잡기")]
-    [Tooltip("잡은 상대를 유지하는 거리(팔 길이 배수)")]
-    [SerializeField] private float holdReachFactor = 1f;
 
     [Header("디버그")]
     [Tooltip("켜면 토글(누를 때마다 잡기 - 놓기), 끄면 홀드(누르는 동안만)")]
@@ -47,9 +43,11 @@ public class PlayerGrab : NetworkBehaviour
     private float _grabStartTime;           // [서버] 붙잡은 시각(당겨오기 유예 판정용)
     private Vector3 _holdOffset;            // [서버] 붙잡은 순간의 상대 위치(나 기준 오프셋). 내가 이동하면 오프셋을 유지하며 끌려옴.
 
-    private FirstPersonLook _firstPersonLook;
-    private PlayerArmReach _armReach;
-    private bool _yawLimitApplied;
+    private PlayerMovement _playerMovement;
+
+    // 붙잡기 충돌 무시 계산용 임시 버퍼
+    private readonly List<Collider> _selfColliders = new();
+    private readonly List<Collider> _otherColliders = new();
 
     // [Owner] 붙잡기 키 홀드 상태 + 재시도 타이머
     private bool _grabHeld;
@@ -88,8 +86,7 @@ public class PlayerGrab : NetworkBehaviour
             playerCamera = GetComponentInChildren<Camera>(true);
         }
 
-        _firstPersonLook = GetComponent<FirstPersonLook>();
-        _armReach = GetComponent<PlayerArmReach>();
+        _playerMovement = GetComponent<PlayerMovement>();
     }
 
     public override void OnNetworkDespawn()
@@ -115,7 +112,6 @@ public class PlayerGrab : NetworkBehaviour
         {
             UpdateGrabHeldOwner();
             UpdateLookElevationOwner();
-            UpdateLookLockOwner();
         }
 
         if (!IsServer)
@@ -141,7 +137,7 @@ public class PlayerGrab : NetworkBehaviour
         }
 
         // 상대가 목표 지점(당겨올 위치)에서 한계 이상 못 따라오면(막힘) 놓아줌
-        Vector3 holdPoint = transform.position + _holdOffset;
+        Vector3 holdPoint = transform.position + transform.rotation * _holdOffset;
         float victimLag = Vector3.Distance(_serverGrabTarget.transform.position, holdPoint);
         if (victimLag > GRAB_STRETCH_LIMIT)
         {
@@ -172,24 +168,6 @@ public class PlayerGrab : NetworkBehaviour
                 RequestGrabServerRpc(new NetworkObjectReference(target.NetworkObject));
             }
         }
-    }
-
-    // 붙잡는 동안 좌우 시점 제한 on/off (상하는 자유)
-    private void UpdateLookLockOwner()
-    {
-        if (_firstPersonLook == null)
-        {
-            return;
-        }
-
-        bool shouldLimit = IsGrabbing;
-        if (shouldLimit == _yawLimitApplied)
-        {
-            return;
-        }
-
-        _yawLimitApplied = shouldLimit;
-        _firstPersonLook.SetLookYawLimited(shouldLimit);
     }
 
     // 상하 시선 각도를 동기화(변할 때만)
@@ -362,17 +340,44 @@ public class PlayerGrab : NetworkBehaviour
         _grabLocalPointNet.Value = localGrabPoint;
         _isGrabbingNet.Value = true;
 
-        // 붙잡은 순간 상대 위치를 오프셋으로 고정. 팔 길이 * holdReachFactor 안으로 당겨옴.
-        _holdOffset = target.transform.position - transform.position;
-        if (_armReach != null)
+        // 붙잡은 순간 상대 위치를 내 정면 기준 로컬 오프셋으로 고정.
+        // 로컬이라 내가 돌아도 상대가 계속 정면에 유지되며 밀려감(월드 고정이면 옆으로 샘).
+        _holdOffset =
+            Quaternion.Inverse(transform.rotation) *
+            (target.transform.position - transform.position);
+        _grabStartTime = Time.time;
+
+        // 서로 밀치지 않도록 잡은 사람↔붙잡힌 사람 충돌만 무시(월드 충돌은 유지)
+        SetGrabCollisionIgnored(target, true);
+    }
+
+    // 잡은 사람과 붙잡힌 사람의 몸 콜라이더(캡슐+래그돌)끼리 충돌을 켜고 끔. [서버 전용]
+    private void SetGrabCollisionIgnored(PlayerGrab other, bool ignore)
+    {
+        if (_playerMovement == null || other == null)
         {
-            float maxHold = _armReach.ArmReach * holdReachFactor;
-            if (maxHold > 0f && _holdOffset.magnitude > maxHold)
+            return;
+        }
+
+        PlayerMovement otherMovement = other.GetComponent<PlayerMovement>();
+        if (otherMovement == null)
+        {
+            return;
+        }
+
+        _playerMovement.CollectBodyColliders(_selfColliders);
+        otherMovement.CollectBodyColliders(_otherColliders);
+
+        foreach (Collider self in _selfColliders)
+        {
+            foreach (Collider otherCollider in _otherColliders)
             {
-                _holdOffset = _holdOffset.normalized * maxHold;
+                if (self != null && otherCollider != null)
+                {
+                    Physics.IgnoreCollision(self, otherCollider, ignore);
+                }
             }
         }
-        _grabStartTime = Time.time;
     }
 
     // 키 뗌: 놓기 + 팔 즉시 내림
@@ -394,6 +399,7 @@ public class PlayerGrab : NetworkBehaviour
 
         if (_serverGrabTarget != null)
         {
+            SetGrabCollisionIgnored(_serverGrabTarget, false);
             _serverGrabTarget._grabbedByRef.Value = new NetworkObjectReference();
             _serverGrabTarget = null;
         }
@@ -416,7 +422,7 @@ public class PlayerGrab : NetworkBehaviour
             return false;
         }
 
-        holdPoint = grabber.transform.position + grabber._holdOffset;
+        holdPoint = grabber.transform.position + grabber.transform.rotation * grabber._holdOffset;
         return true;
     }
 }
