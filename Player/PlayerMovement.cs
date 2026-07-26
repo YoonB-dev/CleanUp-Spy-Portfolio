@@ -40,6 +40,23 @@ public class PlayerMovement : NetworkBehaviour
         _ownedRagdoll = ragdoll;
     }
 
+    /// <summary>이 플레이어 몸을 이루는 모든 콜라이더(캡슐 + 분리된 래그돌). 붙잡기 충돌 무시용.</summary>
+    /// <param name="result">결과를 채울 리스트(먼저 비워짐)</param>
+    public void CollectBodyColliders(List<Collider> result)
+    {
+        result.Clear();
+
+        if (characterController != null)
+        {
+            result.Add(characterController);
+        }
+
+        if (_ownedRagdoll != null)
+        {
+            result.AddRange(_ownedRagdoll.GetComponentsInChildren<Collider>(true));
+        }
+    }
+
     private void OnDestroy()
     {
         if (_ownedRagdoll != null)
