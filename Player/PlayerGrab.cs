@@ -55,7 +55,7 @@ public class PlayerGrab : NetworkBehaviour
     private float _nextGrabTryTime;
 
     /// <summary>다른 플레이어에게 붙잡혀 있는지</summary>
-    public bool IsGrabbed => _grabbedByRef.Value.TryGet(out _);
+    public bool IsGrabbed => NetworkManager.Singleton != null && _grabbedByRef.Value.TryGet(out _);
 
     /// <summary>내가 누군가를 붙잡고 있는지</summary>
     public bool IsGrabbing => _isGrabbingNet.Value;
@@ -70,7 +70,7 @@ public class PlayerGrab : NetworkBehaviour
     public bool TryGetGrabWorldPoint(out Vector3 worldPoint)
     {
         worldPoint = Vector3.zero;
-        if (!_grabbedTargetRef.Value.TryGet(out NetworkObject grabbedObject))
+        if (NetworkManager.Singleton == null || !_grabbedTargetRef.Value.TryGet(out NetworkObject grabbedObject))
         {
             return false;
         }
