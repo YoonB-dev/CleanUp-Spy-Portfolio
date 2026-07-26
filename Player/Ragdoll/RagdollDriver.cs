@@ -16,10 +16,20 @@ public class RagdollDriver : MonoBehaviour
     private const string RIGHT_SHOULDER_BONE_NAME = "Shoulder.R";
     private const float MOVE_INPUT_THRESHOLD = 0.01f;
 
+    // 팔 콜라이더와 몸통/머리 콜라이더의 자기 충돌을 명시적으로 무시
+    private static readonly string[] ARM_BONE_NAMES =
+    {
+        "UpperArm.L", "UpperArm.R", "Forearm.L", "Forearm.R"
+    };
+    private static readonly string[] TORSO_BONE_NAMES =
+    {
+        SPINE_BONE_NAME, HEAD_BONE_NAME, HIPS_BONE_NAME
+    };
+
     // hips가 앵커에서 이 거리 이상 벗어나면 되돌린다 (누적 드리프트 방지)
     private const float ANCHOR_LEASH_DISTANCE = 0.4f;
 
-    // 1인칭 메인 카메라에서 자기 머리를 숨길 레이어 + 대상 렌더러. Body(팔 손 몸통)는 유지.
+    // 오너 1인칭 카메라에서 숨길 레이어와 항상 숨기는 머리 렌더러. 몸통 등은 인스펙터 추가 목록으로
     private const int LOCAL_HIDDEN_LAYER = 30;
     private static readonly string[] OWNER_HIDDEN_RENDERER_NAMES =
     {
@@ -70,12 +80,23 @@ public class RagdollDriver : MonoBehaviour
     [SerializeField]
     private float _torsoDamper = 200f;
 
+    [Header("붙잡힘")]
+    [Tooltip("붙잡혔을 때 상체 유지력 배수 (0=완전 흐물, 1=빳빳). 낮을수록 휘청")]
+    [SerializeField]
+    private float _grabbedUprightFactor = 0.3f;
+
+    [Header("1인칭 숨김")]
+    [Tooltip("오너 1인칭에서 머리 외에 추가로 숨길 렌더러 이름. 분리 모델의 몸통(Body, 벨트 등)")]
+    [SerializeField]
+    private string[] _ownerHiddenExtraRenderers;
+
     private Rigidbody _hipsRigidbody;
     private Rigidbody _anchorRigidbody;
     private ConfigurableJoint _anchorJoint;
     private Vector3 _anchorLocalPosition;
     private Quaternion _anchorLocalRotation = Quaternion.identity;
     private bool _isLimp;
+    private bool _isGrabbed;
     private float _yaw;
     private float _pitch;
     private Quaternion _bodyRotationOffset = Quaternion.identity;
@@ -83,6 +104,7 @@ public class RagdollDriver : MonoBehaviour
     private Transform _playerTransform;
     private PlayerMovement _playerMovement;
     private FirstPersonLook _firstPersonLook;
+    private PlayerGrab _playerGrab;
     private bool _wasMovementEnabled;
     private bool _wasLookEnabled;
 
@@ -132,6 +154,45 @@ public class RagdollDriver : MonoBehaviour
     public float Pitch => _pitch;
 
     /// <summary>
+    /// 잡기/뻗기 요청 상태 (오른팔 뻗기 포즈 트리거)
+    /// </summary>
+    public bool IsReachRequested =>
+        _playerGrab != null && (_playerGrab.IsReaching || _playerGrab.IsGrabbing);
+
+    /// <summary>
+    /// 붙잡은 대상 지점을 향하도록 어깨(월드)에서 본 조준 yaw/pitch(도)를 계산.
+    /// yaw는 몸통 정면 기준 좌우각, pitch는 수평 기준 상하각(양수=아래)으로 뻗기 각 규약과 동일.
+    /// 붙잡고 있지 않으면 false.
+    /// </summary>
+    /// <param name="shoulderWorld">뻗는 팔 어깨의 월드 위치</param>
+    /// <param name="yaw">몸통 정면 기준 좌우각(도)</param>
+    /// <param name="pitch">수평 기준 상하각(도, 양수=아래)</param>
+    public bool TryGetGrabReachAim(Vector3 shoulderWorld, out float yaw, out float pitch)
+    {
+        yaw = 0f;
+        pitch = 0f;
+
+        if (_playerGrab == null ||
+            !_playerGrab.TryGetGrabWorldPoint(out Vector3 targetPoint))
+        {
+            return false;
+        }
+
+        // 플레이어는 yaw만 도므로 몸통 프레임에서 x=좌우, y=상하(월드 수직), z=정면이 된다
+        Vector3 dir =
+            Quaternion.Inverse(_playerTransform.rotation) * (targetPoint - shoulderWorld);
+        if (dir.sqrMagnitude < 1e-6f)
+        {
+            return false;
+        }
+
+        dir.Normalize();
+        yaw = Mathf.Atan2(dir.x, Mathf.Sqrt(dir.y * dir.y + dir.z * dir.z)) * Mathf.Rad2Deg;
+        pitch = Mathf.Atan2(-dir.y, dir.z) * Mathf.Rad2Deg;
+        return true;
+    }
+
+    /// <summary>
     /// 골격 기준 몸체 회전
     /// </summary>
     public Quaternion BodyRotation =>
@@ -144,6 +205,7 @@ public class RagdollDriver : MonoBehaviour
     {
         _playerMovement = GetComponentInParent<PlayerMovement>();
         _firstPersonLook = GetComponentInParent<FirstPersonLook>();
+        _playerGrab = GetComponentInParent<PlayerGrab>();
 
         if (_playerMovement == null || _firstPersonLook == null)
         {
@@ -205,7 +267,7 @@ public class RagdollDriver : MonoBehaviour
     private void Start()
     {
         _yaw = _firstPersonLook.Yaw;
-        HideOwnHeadFromOwnerCamera();
+        HideOwnRenderersFromOwnerCamera();
 
         if (IsServerAuthoritative)
         {
@@ -248,93 +310,6 @@ public class RagdollDriver : MonoBehaviour
             drive.positionDamper = _torsoDamper;
             joint.slerpDrive = drive;
         }
-    }
-
-    /// <summary>
-    /// 클라 전용: 물리 시뮬 없이 본을 kinematic으로 두고 네트워크 포즈 수신 대기
-    /// </summary>
-    private void SetupClientKinematic()
-    {
-        foreach (Rigidbody body in GetComponentsInChildren<Rigidbody>(true))
-        {
-            body.isKinematic = true;
-        }
-
-        // 클라 래그돌은 시각용이므로 콜라이더를 꺼 로컬 물리(동적 오브젝트)를 밀지 않게 한다
-        foreach (Collider bodyCollider in GetComponentsInChildren<Collider>(true))
-        {
-            bodyCollider.enabled = false;
-        }
-    }
-
-    /// <summary>
-    /// 1인칭 메인 카메라에서만 자기 머리를 숨김
-    /// 원본은 숨김 레이어로 메인캠에서 제외하고, 그림자는 ShadowsOnly 프록시가 대신 드리운다. 오너 클라 한정.
-    /// </summary>
-    private void HideOwnHeadFromOwnerCamera()
-    {
-        if (!_firstPersonLook.IsOwner)
-        {
-            return;
-        }
-
-        foreach (Renderer renderer in GetComponentsInChildren<Renderer>(true))
-        {
-            if (System.Array.IndexOf(OWNER_HIDDEN_RENDERER_NAMES, renderer.name) < 0)
-            {
-                continue;
-            }
-
-            CreateShadowProxy(renderer);
-
-            // 원본: 메인캠에서만 숨김. 그림자는 프록시가 담당하므로 원본 그림자는 끔
-            renderer.gameObject.layer = LOCAL_HIDDEN_LAYER;
-            renderer.shadowCastingMode = ShadowCastingMode.Off;
-        }
-
-        _firstPersonLook.ExcludeLayerFromCamera(LOCAL_HIDDEN_LAYER);
-    }
-
-    /// <summary>
-    /// 머리 렌더러를 복제해 보이는 레이어에서 그림자만 드리우는 프록시 생성.
-    /// SkinnedMesh 본은 외부 골격을 참조하므로 Instantiate 후에도 원본 골격에 따라 움직인다.
-    /// </summary>
-    private void CreateShadowProxy(Renderer source)
-    {
-        // source가 숨김 레이어로 바뀌기 전에 복제해 프록시는 보이는 레이어를 유지
-        GameObject proxy = Instantiate(source.gameObject, source.transform.parent);
-        proxy.name = source.name + "_ShadowProxy";
-        proxy.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.ShadowsOnly;
-    }
-
-    /// <summary>
-    /// 죽은 척 상태를 전환하고 좌표계 주도권을 변경
-    /// </summary>
-    /// <param name="isLimp">죽은 척 상태 여부</param>
-    public void SetLimp(bool isLimp)
-    {
-        if (_isLimp == isLimp)
-        {
-            return;
-        }
-
-        _isLimp = isLimp;
-
-        if (isLimp)
-        {
-            _wasMovementEnabled = _playerMovement.enabled;
-            _wasLookEnabled = _firstPersonLook.enabled;
-            _playerMovement.enabled = false;
-            _firstPersonLook.enabled = false;
-        }
-        else
-        {
-            SyncPlayerToRagdoll();
-            _playerMovement.enabled = _wasMovementEnabled;
-            _firstPersonLook.enabled = _wasLookEnabled;
-        }
-
-        ApplyAnchorDrives();
     }
 
     /// <summary>
@@ -499,7 +474,60 @@ public class RagdollDriver : MonoBehaviour
 
         EnableBoneInterpolation();
         IgnorePlayerCollision();
+        IgnoreArmTorsoCollision();
         ApplyAnchorDrives();
+    }
+
+    /// <summary>
+    /// 팔(위/아래팔) 콜라이더와 몸통/머리 콜라이더의 자기 충돌을 무시
+    /// </summary>
+    private void IgnoreArmTorsoCollision()
+    {
+        Collider[] armColliders = CollectBoneColliders(ARM_BONE_NAMES);
+        Collider[] torsoColliders = CollectBoneColliders(TORSO_BONE_NAMES);
+
+        foreach (Collider arm in armColliders)
+        {
+            foreach (Collider torso in torsoColliders)
+            {
+                if (arm != null && torso != null)
+                {
+                    Physics.IgnoreCollision(arm, torso, true);
+                }
+            }
+        }
+
+        // 좌우 팔끼리도 무시 (뻗기 중 반대 팔과 겹칠 수 있음)
+        for (int i = 0; i < armColliders.Length; i++)
+        {
+            for (int j = i + 1; j < armColliders.Length; j++)
+            {
+                if (armColliders[i] != null && armColliders[j] != null)
+                {
+                    Physics.IgnoreCollision(armColliders[i], armColliders[j], true);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 주어진 골격 이름들에 붙은 모든 Collider 수집
+    /// </summary>
+    /// <param name="boneNames">대상 골격 이름 목록</param>
+    /// <returns>수집된 Collider 배열</returns>
+    private Collider[] CollectBoneColliders(string[] boneNames)
+    {
+        var colliders = new System.Collections.Generic.List<Collider>();
+        foreach (string boneName in boneNames)
+        {
+            Transform bone = FindBone(boneName);
+            if (bone != null)
+            {
+                colliders.AddRange(bone.GetComponents<Collider>());
+            }
+        }
+
+        return colliders.ToArray();
     }
 
     /// <summary>
@@ -534,20 +562,22 @@ public class RagdollDriver : MonoBehaviour
     /// <summary>
     /// 런타임 생성 앵커 제거
     /// </summary>
-    private void IgnoreArmTorsoCollision()
+    private void OnDestroy()
     {
-        Collider[] armColliders = CollectBoneColliders(ARM_BONE_NAMES);
-        Collider[] torsoColliders = CollectBoneColliders(TORSO_BONE_NAMES);
-
-        foreach (Collider arm in armColliders)
+        if (_anchorRigidbody != null)
         {
-            foreach (Collider torso in torsoColliders)
-            {
-                if (arm != null && torso != null)
-                {
-                    Physics.IgnoreCollision(arm, torso, true);
-                }
-            }
+            Destroy(_anchorRigidbody.gameObject);
+        }
+    }
+
+    /// <summary>
+    /// 퍼펫 상태에 따른 앵커 위치 및 회전 Drive 갱신
+    /// </summary>
+    private void ApplyAnchorDrives()
+    {
+        if (_anchorJoint == null)
+        {
+            return;
         }
 
         float weight = _isLimp ? 0f : 1f;
@@ -561,10 +591,13 @@ public class RagdollDriver : MonoBehaviour
         _anchorJoint.xDrive = positionDrive;
         _anchorJoint.yDrive = positionDrive;
         _anchorJoint.zDrive = positionDrive;
+
+        // 위치는 유지하되(계속 끌려옴) 붙잡히면 상체 유지력만 낮춰 휘청이게
+        float uprightWeight = _isLimp ? 0f : (_isGrabbed ? _grabbedUprightFactor : 1f);
         _anchorJoint.slerpDrive = new JointDrive
         {
-            positionSpring = _anchorUprightSpring * weight,
-            positionDamper = _anchorUprightDamper * weight,
+            positionSpring = _anchorUprightSpring * uprightWeight,
+            positionDamper = _anchorUprightDamper * uprightWeight,
             maximumForce = _anchorMaxForce
         };
     }
@@ -572,16 +605,11 @@ public class RagdollDriver : MonoBehaviour
     /// <summary>
     /// 플레이어 이동 및 시점 상태 갱신
     /// </summary>
-    /// <param name="boneNames">대상 골격 이름 목록</param>
-    /// <returns>수집된 Collider 배열</returns>
-    private Collider[] CollectBoneColliders(string[] boneNames)
+    private void Update()
     {
         if (_firstPersonLook == null)
         {
-            foreach (Collider ragdollCollider in ragdollColliders)
-            {
-                Physics.IgnoreCollision(playerCollider, ragdollCollider, true);
-            }
+            return;
         }
 
         _yaw = _firstPersonLook.Yaw;
@@ -591,7 +619,7 @@ public class RagdollDriver : MonoBehaviour
     /// <summary>
     /// 죽은 척 상태에서 Player 좌표계를 래그돌 몸체에 동기화
     /// </summary>
-    private void ApplyAnchorDrives()
+    private void FixedUpdate()
     {
         if (!IsServerAuthoritative || _playerTransform == null)
         {
@@ -604,7 +632,21 @@ public class RagdollDriver : MonoBehaviour
             return;
         }
 
+        UpdateGrabbedState();
         DriveAnchor();
+    }
+
+    /// <summary>
+    /// 붙잡힘 상태가 바뀌면 앵커 상체 유지력을 갱신 (붙잡히면 휘청)
+    /// </summary>
+    private void UpdateGrabbedState()
+    {
+        bool grabbed = _playerGrab != null && _playerGrab.IsGrabbed;
+        if (grabbed != _isGrabbed)
+        {
+            _isGrabbed = grabbed;
+            ApplyAnchorDrives();
+        }
     }
 
     /// <summary>
