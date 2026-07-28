@@ -11,7 +11,6 @@ public class RagdollDriver : MonoBehaviour
     private const string HIPS_BONE_NAME = "Hips";
     private const string HEAD_BONE_NAME = "Head";
     private const string SPINE_BONE_NAME = "Spine";
-    private const string CHEST_BONE_NAME = "Chest";
     private const string LEFT_SHOULDER_BONE_NAME = "Shoulder.L";
     private const string RIGHT_SHOULDER_BONE_NAME = "Shoulder.R";
     private const float MOVE_INPUT_THRESHOLD = 0.01f;
@@ -28,6 +27,9 @@ public class RagdollDriver : MonoBehaviour
 
     // hips가 앵커에서 이 거리 이상 벗어나면 되돌린다 (누적 드리프트 방지)
     private const float ANCHOR_LEASH_DISTANCE = 0.4f;
+
+    // 펀치를 감을 때는 타격 반대쪽으로 이만큼 틀어둔다 (허리 회전각 대비 비율)
+    private const float PUNCH_WINDUP_YAW_RATIO = 0.45f;
 
     // 오너 1인칭 카메라에서 숨길 레이어와 항상 숨기는 머리 렌더러. 몸통 등은 인스펙터 추가 목록으로
     private const int LOCAL_HIDDEN_LAYER = 30;
@@ -71,14 +73,11 @@ public class RagdollDriver : MonoBehaviour
     [SerializeField]
     private bool _flipBodyForward;
 
-    [Header("상체 안정화")]
-    [Tooltip("가속 시 척추/가슴/머리가 쏠리지 않게 상체 관절을 굳히는 스프링")]
+    [Header("펀치")]
+    [Tooltip("펀치에 실리는 허리 회전 각도. 몸 전체가 스윙을 따라 돌아 휘청인다. 부호 반대면 반대로 돎")]
     [SerializeField]
-    private float _torsoSpring = 4000f;
-
-    [Tooltip("상체 관절의 감쇠")]
-    [SerializeField]
-    private float _torsoDamper = 200f;
+    [Range(-60f, 60f)]
+    private float _punchBodyYaw = 22f;
 
     [Header("붙잡힘")]
     [Tooltip("붙잡혔을 때 상체 유지력 배수 (0=완전 흐물, 1=빳빳). 낮을수록 휘청")]
@@ -105,6 +104,7 @@ public class RagdollDriver : MonoBehaviour
     private PlayerMovement _playerMovement;
     private FirstPersonLook _firstPersonLook;
     private PlayerGrab _playerGrab;
+    private PlayerPunch _playerPunch;
     private bool _wasMovementEnabled;
     private bool _wasLookEnabled;
 
@@ -160,6 +160,25 @@ public class RagdollDriver : MonoBehaviour
         _playerGrab != null && (_playerGrab.IsReaching || _playerGrab.IsGrabbing);
 
     /// <summary>
+    /// 현재 펀치 자세 상태. 펀치 중이 아니면 false.
+    /// </summary>
+    /// <param name="isLeftHand">휘두르는 손이 왼손인지</param>
+    /// <param name="weight">펀치 자세 가중치 (0=평상 자세, 1=펀치 자세)</param>
+    /// <param name="extension">팔 뻗음 정도 (0=당김, 1=최대로 뻗음)</param>
+    public bool TryGetPunchPose(out bool isLeftHand, out float weight, out float extension)
+    {
+        if (_playerPunch != null)
+        {
+            return _playerPunch.TryGetPunchPose(out isLeftHand, out weight, out extension);
+        }
+
+        isLeftHand = false;
+        weight = 0f;
+        extension = 0f;
+        return false;
+    }
+
+    /// <summary>
     /// 붙잡은 대상 지점을 향하도록 어깨(월드)에서 본 조준 yaw/pitch(도)를 계산.
     /// yaw는 몸통 정면 기준 좌우각, pitch는 수평 기준 상하각(양수=아래)으로 뻗기 각 규약과 동일.
     /// 붙잡고 있지 않으면 false.
@@ -206,6 +225,7 @@ public class RagdollDriver : MonoBehaviour
         _playerMovement = GetComponentInParent<PlayerMovement>();
         _firstPersonLook = GetComponentInParent<FirstPersonLook>();
         _playerGrab = GetComponentInParent<PlayerGrab>();
+        _playerPunch = GetComponentInParent<PlayerPunch>();
 
         if (_playerMovement == null || _firstPersonLook == null)
         {
@@ -269,10 +289,10 @@ public class RagdollDriver : MonoBehaviour
         _yaw = _firstPersonLook.Yaw;
         HideOwnRenderersFromOwnerCamera();
 
+        // 본 관절 구동력은 RagdollPoser가 소유하므로 여기선 앵커만 세운다
         if (IsServerAuthoritative)
         {
             SetupAnchor();
-            StiffenTorso();
         }
         else
         {
@@ -285,31 +305,6 @@ public class RagdollDriver : MonoBehaviour
 
         // 분리 후엔 계층상 고아이므로 Player가 파괴 시 함께 정리하도록 소유권을 넘긴다.
         _playerMovement.RegisterOwnedRagdoll(gameObject);
-    }
-
-    /// <summary>
-    /// 척추/가슴/머리 관절을 굳혀 가속 시 상체가 채찍처럼 쏠리는 것을 억제.
-    /// 상체를 하나로 움직이게 해 머리 쏠림을 줄인다.
-    /// </summary>
-    private void StiffenTorso()
-    {
-        foreach (string boneName in
-                 new[] { SPINE_BONE_NAME, CHEST_BONE_NAME, HEAD_BONE_NAME })
-        {
-            Transform bone = FindBone(boneName);
-            ConfigurableJoint joint =
-                bone != null ? bone.GetComponent<ConfigurableJoint>() : null;
-
-            if (joint == null)
-            {
-                continue;
-            }
-
-            JointDrive drive = joint.slerpDrive;
-            drive.positionSpring = _torsoSpring;
-            drive.positionDamper = _torsoDamper;
-            joint.slerpDrive = drive;
-        }
     }
 
     /// <summary>
@@ -660,7 +655,10 @@ public class RagdollDriver : MonoBehaviour
         }
 
         Vector3 targetPosition = _playerTransform.TransformPoint(_anchorLocalPosition);
-        Quaternion targetRotation = _playerTransform.rotation * _anchorLocalRotation;
+        Quaternion targetRotation =
+            _playerTransform.rotation *
+            Quaternion.Euler(0f, GetPunchBodyYaw(), 0f) *
+            _anchorLocalRotation;
         _anchorRigidbody.MovePosition(targetPosition);
         _anchorRigidbody.MoveRotation(targetRotation);
 
@@ -671,6 +669,24 @@ public class RagdollDriver : MonoBehaviour
             _hipsRigidbody.position =
                 targetPosition + stray.normalized * ANCHOR_LEASH_DISTANCE;
         }
+    }
+
+    /// <summary>
+    /// 펀치에 실리는 허리 회전각. 감을 때 반대로 틀었다가 휘두르며 풀어
+    /// 팔뿐 아니라 몸 전체가 스윙을 따라 돌게 한다.
+    /// </summary>
+    /// <returns>플레이어 정면 기준 허리 yaw(도)</returns>
+    private float GetPunchBodyYaw()
+    {
+        if (!TryGetPunchPose(
+                out bool isLeftHand, out float weight, out float extension))
+        {
+            return 0f;
+        }
+
+        float side = isLeftHand ? -1f : 1f;
+        float unwind = Mathf.Lerp(-PUNCH_WINDUP_YAW_RATIO, 1f, extension);
+        return -side * _punchBodyYaw * unwind * weight;
     }
 
     /// <summary>
