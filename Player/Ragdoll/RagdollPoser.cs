@@ -53,6 +53,11 @@ public class RagdollPoser : MonoBehaviour
     [SerializeField]
     private float _torsoDamper = 200f;
 
+    [Tooltip("쓰러졌을 때 관절 구동력 배수. 0에 가까울수록 완전히 흐물거린다")]
+    [SerializeField]
+    [Range(0f, 0.5f)]
+    private float _limpDriveScale = 0.05f;
+
     [Header("시선 (상하)")]
     [SerializeField]
     private bool _isLookEnabled = true;
@@ -194,6 +199,7 @@ public class RagdollPoser : MonoBehaviour
     private float _phase;
     private float _walkWeight;
     private float _reachWeight;
+    private bool _wasLimp;
     private bool _isPunching;
     private bool _isLeftPunch;
     private float _punchWeight;
@@ -303,6 +309,33 @@ public class RagdollPoser : MonoBehaviour
     }
 
     /// <summary>
+    /// 쓰러졌을 때 모든 관절을 풀어 흐물거리게 한다. 팔도 여기서 같이 푼다
+    /// (자세 구동이 멈추면 ApplyArmDrive가 호출되지 않으므로).
+    /// </summary>
+    private void ApplyLimpDrives()
+    {
+        float spring = _limbPoseSpring * _limpDriveScale;
+        float damper = _limbPoseDamper * _limpDriveScale;
+
+        foreach (ArmPose arm in _armPoses)
+        {
+            SetJointDrive(arm.Joint, spring, damper);
+            SetJointDrive(arm.ForearmJoint, spring, damper);
+        }
+
+        foreach (string boneName in LEG_BONE_NAMES)
+        {
+            SetJointDrive(FindJoint(boneName), spring, damper);
+        }
+
+        foreach (string boneName in TORSO_BONE_NAMES)
+        {
+            SetJointDrive(FindJoint(boneName), _torsoSpring * _limpDriveScale,
+                _torsoDamper * _limpDriveScale);
+        }
+    }
+
+    /// <summary>
     /// 본 관절 구동력을 쓰는 유일한 경로. maximumForce는 프리팹 값을 유지한다.
     /// </summary>
     /// <param name="joint">대상 관절. null이면 무시</param>
@@ -350,6 +383,27 @@ public class RagdollPoser : MonoBehaviour
     private void FixedUpdate()
     {
         if (_driver == null || !_driver.IsServerAuthoritative)
+        {
+            return;
+        }
+
+        // 쓰러진 동안엔 관절을 풀고 자세 구동을 멈춘다. 안 그러면 자세를 유지한 채 마네킹처럼 넘어진다
+        bool isLimp = _driver.IsLimp;
+        if (isLimp != _wasLimp)
+        {
+            _wasLimp = isLimp;
+
+            if (isLimp)
+            {
+                ApplyLimpDrives();
+            }
+            else
+            {
+                ApplyBaseDrives();
+            }
+        }
+
+        if (isLimp)
         {
             return;
         }

@@ -11,6 +11,8 @@ public class RagdollDriver : MonoBehaviour
     private const string HIPS_BONE_NAME = "Hips";
     private const string HEAD_BONE_NAME = "Head";
     private const string SPINE_BONE_NAME = "Spine";
+    private const string LEFT_FOREARM_BONE_NAME = "Forearm.L";
+    private const string RIGHT_FOREARM_BONE_NAME = "Forearm.R";
     private const string LEFT_SHOULDER_BONE_NAME = "Shoulder.L";
     private const string RIGHT_SHOULDER_BONE_NAME = "Shoulder.R";
     private const float MOVE_INPUT_THRESHOLD = 0.01f;
@@ -79,6 +81,11 @@ public class RagdollDriver : MonoBehaviour
     [Range(-60f, 60f)]
     private float _punchBodyYaw = 22f;
 
+    [Tooltip("아랫팔 뼈에서 주먹까지의 거리. 타격 판정 위치. 반대로 뻗으면 부호를 뒤집는다")]
+    [SerializeField]
+    [Range(-0.6f, 0.6f)]
+    private float _fistOffset = 0.22f;
+
     [Header("붙잡힘")]
     [Tooltip("붙잡혔을 때 상체 유지력 배수 (0=완전 흐물, 1=빳빳). 낮을수록 휘청")]
     [SerializeField]
@@ -99,14 +106,21 @@ public class RagdollDriver : MonoBehaviour
     private float _yaw;
     private float _pitch;
     private Quaternion _bodyRotationOffset = Quaternion.identity;
-    private Vector3 _playerToHipsOffset;
     private Transform _playerTransform;
     private PlayerMovement _playerMovement;
     private FirstPersonLook _firstPersonLook;
     private PlayerGrab _playerGrab;
     private PlayerPunch _playerPunch;
+    private Transform _leftForearm;
+    private Transform _rightForearm;
+    private Rigidbody[] _boneBodies;
     private bool _wasMovementEnabled;
     private bool _wasLookEnabled;
+
+    /// <summary>
+    /// 이 래그돌의 주인 Player. 래그돌은 월드로 분리돼 있어 계층으로는 거슬러 올라갈 수 없다.
+    /// </summary>
+    public Transform PlayerRoot => _playerTransform;
 
     /// <summary>
     /// 에디터 도구용 Hips Transform 설정 및 조회
@@ -268,16 +282,78 @@ public class RagdollDriver : MonoBehaviour
                 "[RagdollDriver] Hips에 Rigidbody가 필요합니다.");
         }
 
-        ComputeBodyFrame();
-        _playerToHipsOffset =
-            Quaternion.Inverse(BodyRotation) *
-            (_hips.position - _playerTransform.position);
+        _leftForearm = FindBone(LEFT_FOREARM_BONE_NAME);
+        _rightForearm = FindBone(RIGHT_FOREARM_BONE_NAME);
+        _boneBodies = GetComponentsInChildren<Rigidbody>(true);
 
-        // 분리(Start의 SetParent) 전에 동기화 컴포넌트에 본을 넘긴다
+        ComputeBodyFrame();
+        BindToPlayerComponents();
+    }
+
+    /// <summary>
+    /// 분리(Start의 SetParent) 전에 Player 쪽 컴포넌트들에 자신을 넘긴다.
+    /// 분리 후에는 계층이 끊겨 서로 찾을 수 없다.
+    /// </summary>
+    private void BindToPlayerComponents()
+    {
         RagdollNetworkSync networkSync = GetComponentInParent<RagdollNetworkSync>();
         if (networkSync != null)
         {
             networkSync.BindRagdoll(transform);
+        }
+
+        if (_playerPunch != null)
+        {
+            _playerPunch.BindRagdoll(this);
+        }
+
+        PlayerKnockdown knockdown = GetComponentInParent<PlayerKnockdown>();
+        if (knockdown != null)
+        {
+            knockdown.BindRagdoll(this);
+        }
+    }
+
+    /// <summary>
+    /// 주먹(아랫팔 끝)의 월드 위치. 타격 판정 지점.
+    /// </summary>
+    /// <param name="isLeftHand">왼손인지</param>
+    /// <param name="point">주먹 월드 위치</param>
+    public bool TryGetFistPoint(bool isLeftHand, out Vector3 point)
+    {
+        Transform forearm = isLeftHand ? _leftForearm : _rightForearm;
+
+        if (forearm == null)
+        {
+            point = Vector3.zero;
+            return false;
+        }
+
+        // 팔 뼈는 로컬 up이 뼈를 따라 손 방향을 향한다
+        point = forearm.position + forearm.up * _fistOffset;
+        return true;
+    }
+
+    /// <summary>
+    /// 래그돌 전체에 같은 속도 변화를 줘 몸이 통째로 날아가게 한다.
+    /// 질량과 무관하게 같은 속도를 주므로 팔다리가 뜯겨나가듯 흩어지지 않는다.
+    /// </summary>
+    /// <param name="velocity">속도 변화량 (m/s)</param>
+    public void ApplyKnockbackVelocity(Vector3 velocity)
+    {
+        if (_boneBodies == null)
+        {
+            return;
+        }
+
+        foreach (Rigidbody body in _boneBodies)
+        {
+            if (body == null || body.isKinematic)
+            {
+                continue;
+            }
+
+            body.AddForce(velocity, ForceMode.VelocityChange);
         }
     }
 
@@ -396,6 +472,11 @@ public class RagdollDriver : MonoBehaviour
         else
         {
             SyncPlayerToRagdoll();
+
+            // 흐물거리는 동안 앵커는 제자리에 남아 있었다. MovePosition으로 따라가면
+            // 한 스텝에 몸이 끌려가 튀므로, 몸 위치로 순간이동시킨 뒤 구동을 재개한다
+            SnapAnchorToPlayer();
+
             _playerMovement.enabled = _wasMovementEnabled;
             _firstPersonLook.enabled = _wasLookEnabled;
         }
@@ -526,13 +607,15 @@ public class RagdollDriver : MonoBehaviour
     }
 
     /// <summary>
-    /// 물리 본의 렌더 보간을 켜 50Hz 물리와 렌더 프레임 사이 떨림을 줄인다
+    /// 물리 본의 렌더 보간을 켜 50Hz 물리와 렌더 프레임 사이 떨림을 줄인다. <br/>
+    /// 넉백으로 빠르게 날아갈 때 얇은 바닥을 지나치지 않도록 연속 충돌 판정도 함께 켠다.
     /// </summary>
     private void EnableBoneInterpolation()
     {
         foreach (Rigidbody body in GetComponentsInChildren<Rigidbody>(true))
         {
             body.interpolation = RigidbodyInterpolation.Interpolate;
+            body.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
         }
     }
 
@@ -645,6 +728,20 @@ public class RagdollDriver : MonoBehaviour
     }
 
     /// <summary>
+    /// 앵커를 Player 좌표계로 순간이동. MovePosition과 달리 속도가 실리지 않는다.
+    /// </summary>
+    private void SnapAnchorToPlayer()
+    {
+        if (_anchorRigidbody == null)
+        {
+            return;
+        }
+
+        _anchorRigidbody.position = _playerTransform.TransformPoint(_anchorLocalPosition);
+        _anchorRigidbody.rotation = _playerTransform.rotation * _anchorLocalRotation;
+    }
+
+    /// <summary>
     /// Player 현재 좌표계로 앵커를 물리 이동시켜 조인트에 목표 속도를 전달
     /// </summary>
     private void DriveAnchor()
@@ -690,12 +787,19 @@ public class RagdollDriver : MonoBehaviour
     }
 
     /// <summary>
-    /// Player 좌표계를 현재 래그돌 몸체 좌표계에 정렬
+    /// Player 좌표계를 현재 래그돌 몸체 위치에 정렬. 캡슐은 항상 세워둔 채 수평만 따라간다. <br/>
+    /// 누운 몸의 기울어진 회전으로 오프셋을 돌리면 2m 캡슐이 지면 아래에 박히고,
+    /// 일어날 때 그 위치로 앵커가 스냅되면서 래그돌이 바닥을 뚫고 떨어진다.
     /// </summary>
     private void SyncPlayerToRagdoll()
     {
-        Quaternion rotation = BodyRotation;
-        Vector3 position = _hips.position - rotation * _playerToHipsOffset;
+        Quaternion rotation = Quaternion.Euler(0f, BodyRotation.eulerAngles.y, 0f);
+
+        // 높이는 쓰러지기 전 지면 높이를 유지한다. 누운 몸의 hips는 지면에 붙어 있어
+        // 그 높이를 따라가면 캡슐 아래 절반이 그대로 땅속으로 들어간다
+        Vector3 position = _hips.position;
+        position.y = _playerTransform.position.y;
+
         _playerTransform.SetPositionAndRotation(position, rotation);
     }
 
@@ -726,6 +830,18 @@ public class RagdollDriver : MonoBehaviour
         Gizmos.DrawWireSphere(_hips.position, 0.06f);
         Gizmos.color = Color.white;
         Gizmos.DrawLine(_anchorRigidbody.position, _hips.position);
+
+        // 주먹 판정 위치. 팔 안쪽에 찍히면 _fistOffset 부호를 뒤집는다
+        Gizmos.color = Color.yellow;
+        if (TryGetFistPoint(true, out Vector3 leftFist))
+        {
+            Gizmos.DrawWireSphere(leftFist, 0.05f);
+        }
+
+        if (TryGetFistPoint(false, out Vector3 rightFist))
+        {
+            Gizmos.DrawWireSphere(rightFist, 0.05f);
+        }
     }
 
     /// <summary>

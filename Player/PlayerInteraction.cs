@@ -272,6 +272,14 @@ public class PlayerInteraction : NetworkBehaviour
         DropHeldItemStandard();
     }
 
+    /// <summary>
+    /// 들고 있던 아이템을 그 자리에 떨어뜨립니다. 피격처럼 플레이어 의사와 무관하게 놓칠 때 호출합니다. [서버 전용]
+    /// </summary>
+    public void ServerDropHeldItem()
+    {
+        DropHeldItemStandard();
+    }
+
     // 중복 코드를 줄이기 위한 내부 실제 드롭 처리 함수
     private void DropHeldItemStandard()
     {

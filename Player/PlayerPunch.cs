@@ -1,9 +1,10 @@
+using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// 펀치 입력(H키)의 좌우 교대와 타이밍을 관리 (서버 권위). <br/>
+/// 펀치 입력(H키)의 좌우 교대, 타이밍, 타격 판정을 관리 (서버 권위). <br/>
 /// 실제 팔 자세는 서버 물리에서 RagdollPoser가 이 상태를 읽어 적용한다.
 /// </summary>
 public class PlayerPunch : NetworkBehaviour
@@ -19,15 +20,69 @@ public class PlayerPunch : NetworkBehaviour
     private const float HOLD_END = STRIKE_END + HOLD_DURATION;
     private const float PUNCH_DURATION = HOLD_END + RECOVER_DURATION;
 
+    [Header("타격")]
+    [Tooltip("주먹 판정 반경. 팔이 늦게 따라오므로 넉넉하게 잡는다")]
+    [SerializeField]
+    private float _hitRadius = 0.35f;
+
+    [Tooltip("맞은 플레이어가 날아가는 속도 (m/s)")]
+    [SerializeField]
+    private float _knockbackSpeed = 14f;
+
+    [Tooltip("맞은 물체를 밀어내는 충격량. 무거운 물체일수록 덜 날아간다")]
+    [SerializeField]
+    private float _objectImpulse = 26f;
+
+    [Tooltip("날아가는 방향에 섞는 위쪽 비율. 클수록 붕 뜬다")]
+    [SerializeField]
+    [Range(0f, 1.5f)]
+    private float _launchUpward = 0.85f;
+
+    private const int HIT_BUFFER_SIZE = 16;
+
     private float _punchStartTime = float.NegativeInfinity;   // [서버] 현재 펀치 시작 시각
     private bool _isLeftHand;                                 // [서버] 이번에 휘두르는 손
+    private int _punchId;                                     // [서버] 펀치마다 증가. 한 펀치에 한 번만 맞게
+    private int _hitPunchId = -1;                             // [서버] 이미 타격이 들어간 펀치
     private bool _punchHeld;                                  // [Owner] 키 홀드 상태
     private float _nextPunchRequestTime;                      // [Owner] 다음 연타 요청 시각
+
+    private RagdollDriver _driver;
+    private PlayerKnockdown _knockdown;
+    private readonly Collider[] _hitBuffer = new Collider[HIT_BUFFER_SIZE];
+    // 판정 1회 내 중복 타격 방지 (한 대상의 뼈 여러 개가 동시에 걸린다)
+    private readonly HashSet<Component> _hitTargets = new HashSet<Component>();
 
     // 네트워크에 스폰되지 않았으면(오프라인 테스트) 이 인스턴스가 곧 오너이자 서버
     private bool IsOffline => !IsSpawned;
 
     private bool HasInputAuthority => IsOffline || IsOwner;
+
+    private bool HasHitAuthority => IsOffline || IsServer;
+
+    // 주먹이 나가는 구간. 이때만 타격 판정을 돌린다
+    private bool IsStriking
+    {
+        get
+        {
+            float elapsed = Time.time - _punchStartTime;
+            return elapsed >= WINDUP_END && elapsed <= HOLD_END;
+        }
+    }
+
+    /// <summary>
+    /// RagdollDriver가 Player에서 분리되기 전에 자신을 넘긴다. 주먹 위치 조회용.
+    /// </summary>
+    /// <param name="driver">이 플레이어의 래그돌 드라이버</param>
+    public void BindRagdoll(RagdollDriver driver)
+    {
+        _driver = driver;
+    }
+
+    private void Awake()
+    {
+        _knockdown = GetComponent<PlayerKnockdown>();
+    }
 
     /// <summary>
     /// 현재 펀치 자세 상태. 펀치 중이 아니면 false. [서버 전용]
@@ -119,7 +174,112 @@ public class PlayerPunch : NetworkBehaviour
             return;
         }
 
+        // 쓰러져 있는 동안엔 못 친다
+        if (_knockdown != null && _knockdown.IsDown)
+        {
+            return;
+        }
+
         _isLeftHand = !_isLeftHand;
         _punchStartTime = Time.time;
+        _punchId++;
+    }
+
+    /// <summary>
+    /// 주먹이 나가는 동안 매 물리 스텝 타격을 판정한다. 한 펀치에 한 번만 들어간다. [서버 전용]
+    /// </summary>
+    private void FixedUpdate()
+    {
+        if (!HasHitAuthority || !IsStriking || _punchId == _hitPunchId)
+        {
+            return;
+        }
+
+        if (_driver == null || !_driver.TryGetFistPoint(_isLeftHand, out Vector3 fist))
+        {
+            return;
+        }
+
+        int count = Physics.OverlapSphereNonAlloc(
+            fist, _hitRadius, _hitBuffer, ~0, QueryTriggerInteraction.Ignore);
+
+        _hitTargets.Clear();
+        bool didHit = false;
+
+        for (int i = 0; i < count; i++)
+        {
+            didHit |= TryHit(_hitBuffer[i]);
+        }
+
+        if (didHit)
+        {
+            _hitPunchId = _punchId;
+        }
+    }
+
+    // 콜라이더 하나를 판정. 플레이어면 날려 쓰러뜨리고, 물체면 밀어낸다
+    private bool TryHit(Collider hit)
+    {
+        Transform victim = ResolveVictimRoot(hit);
+
+        if (victim != null)
+        {
+            // 자기 몸(캡슐, 자기 래그돌 뼈)은 제외
+            if (victim == transform || !_hitTargets.Add(victim))
+            {
+                return false;
+            }
+
+            PlayerKnockdown knockdown = victim.GetComponent<PlayerKnockdown>();
+            if (knockdown == null)
+            {
+                return false;
+            }
+
+            knockdown.ServerKnockdown(
+                GetLaunchDirection(victim.position) * _knockbackSpeed);
+            return true;
+        }
+
+        Rigidbody body = hit.attachedRigidbody;
+        if (body == null || body.isKinematic || !_hitTargets.Add(body))
+        {
+            return false;
+        }
+
+        body.AddForce(
+            GetLaunchDirection(body.position) * _objectImpulse, ForceMode.Impulse);
+        return true;
+    }
+
+    /// <summary>
+    /// 맞은 콜라이더가 속한 Player를 찾는다. 래그돌은 Player에서 분리돼 있어
+    /// 계층으로는 못 찾으므로 RagdollDriver가 주인을 알려준다.
+    /// </summary>
+    /// <param name="hit">판정에 걸린 콜라이더</param>
+    /// <returns>Player 루트. 플레이어가 아니면 null</returns>
+    private static Transform ResolveVictimRoot(Collider hit)
+    {
+        RagdollDriver driver = hit.GetComponentInParent<RagdollDriver>();
+        if (driver != null)
+        {
+            return driver.PlayerRoot;
+        }
+
+        PlayerKnockdown knockdown = hit.GetComponentInParent<PlayerKnockdown>();
+        return knockdown != null ? knockdown.transform : null;
+    }
+
+    // 대상을 밀어낼 방향. 나에게서 멀어지는 수평 방향에 위쪽을 섞는다
+    private Vector3 GetLaunchDirection(Vector3 targetPosition)
+    {
+        Vector3 flat = targetPosition - transform.position;
+        flat.y = 0f;
+
+        Vector3 forward = flat.sqrMagnitude > 1e-4f
+            ? flat.normalized
+            : transform.forward;
+
+        return (forward + Vector3.up * _launchUpward).normalized;
     }
 }
