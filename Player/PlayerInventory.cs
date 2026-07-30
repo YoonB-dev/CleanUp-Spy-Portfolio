@@ -14,6 +14,7 @@ public class PlayerInventory : NetworkBehaviour
     public int CurrentSlot => _currentSlot.Value;
     public static PlayerInventory LocalInstance { get; private set; }
     private RoleManager _roleManager;
+    [SerializeField] private RagdollPoser _ragdollPoser; // 인스펙터에서 연결
     private void Awake()
     {
         _roleManager = GetComponent<RoleManager>();
@@ -222,6 +223,8 @@ public class PlayerInventory : NetworkBehaviour
         UpdateSlotVisual(2, Slot2.Value);
         UpdateSlotVisual(3, Slot3.Value);
 
+        UpdateRagdollCarryState();
+
         // 2. LocalPlayer인 경우 실시간 UI 업데이트 전파
         if (IsLocalPlayer && InventoryUIController.Instance != null)
         {
@@ -292,4 +295,40 @@ public class PlayerInventory : NetworkBehaviour
     {
         return !IsSlotEmpty(1) && !IsSlotEmpty(2) && !IsSlotEmpty(3);
     }
+
+    #region 레그돌 포즈
+    /// <summary>
+    /// 현재 손에 든 아이템 유무 및 정보에 따라 RagdollPoser의 손 위치/그립을 갱신합니다.
+    /// </summary>
+    private void UpdateRagdollCarryState()
+    {
+        // 서버 권위로 래그돌 동작을 제어하므로 서버/호스트에서만 Pose 제어 호출
+        if (!IsServer || _ragdollPoser == null) return;
+
+        // 현재 선택된 슬롯의 아이템 가져오기
+        PickupItem currentItem = GetCurrentEquippedItem();
+
+        if (currentItem != null && _currentSlot.Value >= 1 && _currentSlot.Value <= 3)
+        {
+            // 아이템에 설정된 그립 포인트(CarryGripPoints)가 있다면 RagdollPoser에 전달
+            if (currentItem.TryGetComponent<CarryGripPoints>(out var gripPoints))
+            {
+                _ragdollPoser.SetCarryTarget(gripPoints);
+            }
+            else
+            {
+                _ragdollPoser.SetCarryTarget(null); // 기본 그립 사용
+            }
+
+            // 손을 앞으로 뻗도록 요청
+            _ragdollPoser.SetCarryRequested(true);
+        }
+        else
+        {
+            // 아무것도 들고 있지 않거나(슬롯 0) 마피아 전용 아이템 등일 때 손을 아래로 내림
+            _ragdollPoser.SetCarryTarget(null);
+            _ragdollPoser.SetCarryRequested(false);
+        }
+    }
+    #endregion
 }

@@ -21,7 +21,7 @@ public interface ICameraTool
 ///   2) 캡처 시점의 화면을 찍어서 Photo 프리팹으로 스폰
 /// </summary>
 [RequireComponent(typeof(PickupItem))]
-public class PolaroidCamera : NetworkBehaviour, ICameraTool, ICustomCarryTransform, IPickupListener
+public class PolaroidCamera : NetworkBehaviour, ICameraTool, IPickupListener
 {
     [Header("References")]
     [Tooltip("뷰파인더 화면에 실시간으로 그려주는 자식 카메라 (구멍 뒤 스크린용)")]
@@ -48,7 +48,6 @@ public class PolaroidCamera : NetworkBehaviour, ICameraTool, ICustomCarryTransfo
     [SerializeField] private float carryRightOffsetAim = 0.1f;
 
     private const int MAX_JPG_BYTE_SIZE = 512 * 1024;
-    private const float NEAR_CLIP = 0.3f; // 원래 세팅값 백업용
 
     // PickupItem.cs를 건드리지 않기 위해, 서버가 Holder를 폴링해서 여기 미러링한다.
     private readonly NetworkVariable<bool> _isEquipped = new NetworkVariable<bool>(
@@ -137,37 +136,25 @@ public class PolaroidCamera : NetworkBehaviour, ICameraTool, ICustomCarryTransfo
         }
     }
 
-    // ===== ICustomCarryTransform 구현 - PickupItem이 매 프레임 이걸 먼저 물어봄 =====
-    public bool TryGetCarryTransform(Transform cameraTransform, out Vector3 position, out Quaternion rotation)
-    {
-        if (!IsAiming)
-        {
-            // 조준 중이 아니면 "나는 특수 위치를 원하지 않는다" -> PickupItem이 기본 로직 사용
-            position = default;
-            rotation = default;
-            return false;
-        }
-
-        // 오른쪽으로 살짝 이동
-        position = cameraTransform.position + cameraTransform.forward * carryDistanceAim + cameraTransform.up * carryHeightAim + cameraTransform.right * carryRightOffsetAim;
-        rotation = cameraTransform.rotation;
-        return true;
-    }
-
     private void DetachFromCameraAnchor()
     {
-        if (!_isReparented) return;
-
-        // 부모 관계 해제 (기존 부모로 되돌림)
-        transform.SetParent(_originalParent);
+        // 조준 중(카메라 부모 상태)에 버려졌거나, 부모가 임시 변경된 상태일 때 복구
+        if (!_isReparented && transform.parent != _originalParent)
+        {
+            // 백업된 _originalParent가 존재한다면 복구
+            if (_originalParent != null)
+            {
+                transform.SetParent(_originalParent);
+            }
+        }
 
         if (TryGetComponent(out Rigidbody rb))
         {
-            // 원래 상태에 맞게 물리 복원 (들고 있는 상태면 kinematic 유지, 내려놓으면 풀어주기 등)
-            rb.isKinematic = !_pickupItem.Holder; // 들고 있으면 kinematic, 아니면 물리 활성화
+            // 내려놓은 상태이므로 kinematic 해제 및 물리 활성화
+            rb.isKinematic = !_pickupItem.Holder;
         }
-
         _isReparented = false;
+        _originalParent = null;
     }
     // ===== ICameraTool 구현 - holdItem이 든 아이템에서 이 인터페이스를 찾아 직접 호출 =====
 
@@ -181,22 +168,6 @@ public class PolaroidCamera : NetworkBehaviour, ICameraTool, ICustomCarryTransfo
         {
             viewfinderCamera.enabled = isAiming;
             if (!isAiming) ClearViewfinderTexture();
-        }
-
-        // 본인 화면은 서버 왕복(RTT) 없이 즉시 반영해서 입력 반응성 확보
-        ApplyCarryTransform(isAiming);
-    }
-    private void ApplyCarryTransform(bool isAiming)
-    {
-        if (isAiming)
-        {
-            transform.localPosition = new Vector3(carryRightOffsetAim, carryHeightAim, carryDistanceAim);
-            transform.localRotation = Quaternion.identity;
-        }
-        else
-        {
-            transform.localPosition = _pickupItem != null ? new Vector3(0, _pickupItem.CarryHeight, _pickupItem.CarryDistance) : Vector3.zero;
-            transform.localRotation = Quaternion.identity;
         }
     }
     public void Capture()
@@ -289,6 +260,81 @@ public class PolaroidCamera : NetworkBehaviour, ICameraTool, ICustomCarryTransfo
         photo.ApplyPhotoTextureClientRpc(jpgBytes);
     }
 
+    
+
+    [ServerRpc]
+    private void SetAimingStateServerRpc(bool isAiming)
+    {
+        // 서버에서 값을 변경하면, 전 세계 모든 클라이언트의 _isAiming.Value가 동기화됩니다.
+        _isAiming.Value = isAiming;
+    }
+    private void OnAimingChanged(bool previousValue, bool newValue)
+    {
+        if (viewfinderCamera != null)
+        {
+            viewfinderCamera.enabled = newValue;
+            if (!newValue) ClearViewfinderTexture();
+        }
+
+        // 1. 부모 전환 및 위치 적용
+        UpdateParentAndTransform(newValue);
+
+        // 2. 카메라 Near Clip Plane 조정
+        ApplyCameraClip(newValue);
+    }
+
+    private void UpdateParentAndTransform(bool isAiming)
+    {
+        if (_pickupItem == null || _pickupItem.Holder == null) return;
+
+        var holderNetObj = _pickupItem.Holder.NetworkObject;
+        if (holderNetObj == null) return;
+
+        if (isAiming)
+        {
+            // [조준 시] 부모를 1인칭 카메라로 변경하여 회전/이동을 즉시 완벽 추종
+            if (holderNetObj.TryGetComponent<FirstPersonLook>(out var playerCamera) &&
+                playerCamera.PlayerCameraTransform != null)
+            {
+                if (!_isReparented)
+                {
+                    _originalParent = transform.parent;
+                    _isReparented = true; // 부모 변경 플래그 켬
+                }
+
+                transform.SetParent(playerCamera.PlayerCameraTransform, false);
+                transform.localPosition = new Vector3(carryRightOffsetAim, carryHeightAim, carryDistanceAim);
+                transform.localRotation = Quaternion.identity;
+            }
+        }
+        else
+        {
+            // [조준 해제 시] 다시 래그돌 CarryAnchor 자식으로 되돌림
+            Transform targetParent = null;
+
+            if (holderNetObj.TryGetComponent<RagdollNetworkSync>(out var ragdollSync) &&
+                ragdollSync.Poser != null && ragdollSync.Poser.CarryAnchor != null)
+            {
+                targetParent = ragdollSync.Poser.CarryAnchor;
+            }
+            else if (holderNetObj.TryGetComponent<FirstPersonLook>(out var playerCam) &&
+                     playerCam.PlayerCameraTransform != null)
+            {
+                targetParent = playerCam.PlayerCameraTransform;
+            }
+
+            if (targetParent != null)
+            {
+                transform.SetParent(targetParent, false);
+                // 앵커 기준 (0,0,0) 위치 및 회전 강제 초기화
+                transform.localPosition = Vector3.zero;
+                transform.localRotation = Quaternion.identity;
+            }
+
+            _isReparented = false;
+        }
+    }
+
     private void UpdateRemainingPhotosUI()
     {
         if (remainingPhotosText != null)
@@ -300,26 +346,6 @@ public class PolaroidCamera : NetworkBehaviour, ICameraTool, ICustomCarryTransfo
     private void OnRemainingPhotosChanged(int previousValue, int newValue)
     {
         UpdateRemainingPhotosUI();
-    }
-
-    [ServerRpc]
-    private void SetAimingStateServerRpc(bool isAiming)
-    {
-        // 서버에서 값을 변경하면, 전 세계 모든 클라이언트의 _isAiming.Value가 동기화됩니다.
-        _isAiming.Value = isAiming;
-        ApplyCarryTransform(isAiming);
-    }
-    private void OnAimingChanged(bool previousValue, bool newValue)
-    {
-        if (viewfinderCamera == null) return;
-
-        viewfinderCamera.enabled = newValue;
-        if (!newValue)
-        {
-            ClearViewfinderTexture();
-        }
-        ApplyCarryTransform(newValue);
-        ApplyCameraClip(newValue);
     }
 
     private void ApplyCameraClip(bool isAiming)

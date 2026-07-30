@@ -15,8 +15,9 @@ public class PickupItem : NetworkBehaviour
     private Rigidbody _itemRigidbody;
     private Collider itemCollider;
     private PickupHighlight pickupHighlight;
-    private float carryDistance = 1.5f; public float CarryDistance => carryDistance;
-    private float carryHeight = -0.3f; public float CarryHeight => carryHeight;
+    [Header("Carry Transform Settings")]
+    [SerializeField] private float carryDistance = 1f; public float CarryDistance => carryDistance;
+    [SerializeField] private float carryHeight = -0.3f; public float CarryHeight => carryHeight;
     private PlayerInteraction _holder;
     public PlayerInteraction Holder => _holder;
 
@@ -26,11 +27,10 @@ public class PickupItem : NetworkBehaviour
     // 캐싱용 -> 오브젝트 비활성화 대신 렌더랑 캔버스를 끄는 방식으로 처리하기 위한 변수
     private MeshRenderer[] _renderers;
     private Canvas[] _canvases;
-
-    private ICustomCarryTransform _customCarry;
     private IPickupListener _pickupListener;
     private Vector3 _originalLocalScale;
     private NetworkTransform _networkTransform;
+    private RagdollPoser _holderRagdollPoser; // 현재 들고 있는 사람의 자세 제어기 (양손 들기 요청/해제용)
     public override void OnNetworkSpawn()
     {
         base.OnNetworkSpawn();
@@ -66,7 +66,6 @@ public class PickupItem : NetworkBehaviour
         _originalLocalScale = transform.localScale;
         _renderers = GetComponentsInChildren<MeshRenderer>();
         _canvases = GetComponentsInChildren<Canvas>(true);
-        TryGetComponent(out _customCarry);
         TryGetComponent(out _pickupListener);
         TryGetComponent(out _networkTransform);
     }
@@ -87,7 +86,7 @@ public class PickupItem : NetworkBehaviour
         }
 
         float distance = Vector3.Distance(transform.position, playerInteraction.transform.position);
-        return distance <= 3.5f;
+        return distance <= 5.5f;
     }
 
     public void Pickup(PlayerInteraction playerInteraction)
@@ -100,6 +99,16 @@ public class PickupItem : NetworkBehaviour
         _holder = playerInteraction;
         SetHighlighted(false);
         NetworkObject.ChangeOwnership(playerInteraction.OwnerClientId);
+
+        // 홀더의 RagdollPoser를 찾아서 양손 들기 자세 요청, (SetCarryRequested는 IsServerAuthoritative 인스턴스에서만 실제로 팔을 구동하므로 서버에서 직접 호출해도 안전)
+        _holderRagdollPoser = playerInteraction.playerRagDollPoser;
+        _holderRagdollPoser?.SetCarryRequested(true);
+        
+        // 이 오브젝트의 그립을 홀더에 적용
+        if (TryGetComponent<CarryGripPoints>(out var gripPoints))
+        {
+            _holderRagdollPoser?.SetCarryTarget(gripPoints);
+        }
 
         // RPC를 통해 모든 클라이언트(특히 소유자 로격 클라이언트)에서 물리적 자식화를 수행합니다.
         AttachToHolderClientRpc(playerInteraction.NetworkObjectId);
@@ -117,10 +126,8 @@ public class PickupItem : NetworkBehaviour
         {
             inventory.ClearItemFromSlots(this);
         }
-        
-        _pickupListener?.OnDropped();
-        _holder = null;
-        NetworkObject.RemoveOwnership();
+
+        DropPos();
 
         // RPC를 통해 모든 클라이언트에서 자식 관계를 해제하고 월드로 내보냅니다.
         DetachFromHolderClientRpc(throwerId, Vector3.zero, 0f, Vector3.zero);
@@ -132,29 +139,22 @@ public class PickupItem : NetworkBehaviour
         // 컴포넌트 초기화 타이밍을 확보하기 위해 코루틴 실행으로 수정.
         StartCoroutine(AttachToHolderCoroutine(holderNetId));
     }
-    
+
     private IEnumerator AttachToHolderCoroutine(ulong holderNetId)
     {
         if (_networkTransform != null) _networkTransform.enabled = false;
-        
+
         if (NetworkObject != null && !NetworkObject.IsSpawned)
         {
             yield return new WaitUntil(() => NetworkObject.IsSpawned);
         }
         yield return null;
-        
-        // 네트워크 ID를 통해 Player 오브젝트를 가져옵니다.
-
-        if (_customCarry == null) TryGetComponent(out _customCarry);
-        // 만약 렌더러 캐싱이 덜 되었을치 모르니 한 번 더 체크
-        if (_renderers == null || _renderers.Length == 0) _renderers = GetComponentsInChildren<MeshRenderer>();
 
         if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(holderNetId, out var holderNetObj))
         {
-            // 물리 계산
+            // 1. 물리 완전 비활성화
             if (_itemRigidbody != null)
             {
-                _itemRigidbody.isKinematic = false; // 물리 엔진을 끄고 해야함.
                 _itemRigidbody.linearVelocity = Vector3.zero;
                 _itemRigidbody.angularVelocity = Vector3.zero;
                 _itemRigidbody.isKinematic = true;
@@ -166,47 +166,48 @@ public class PickupItem : NetworkBehaviour
                 itemCollider.enabled = false;
             }
 
-
             Transform targetParent = holderNetObj.transform;
+            RagdollPoser ragdollPoser = null;
 
-            if (holderNetObj.TryGetComponent<FirstPersonLook>(out var player))
+            if (holderNetObj.TryGetComponent<RagdollNetworkSync>(out var ragdollSync))
             {
-                // PlayerCamera의 부모인 'CameraPivot' 트랜스폼을 찾습니다.
-                if (player.PlayerCameraTransform != null && player.PlayerCameraTransform.parent != null)
-                {
-                    // targetParent를 NetworkObject가 부착된 CameraPivot으로 설정!
-                    targetParent = player.PlayerCameraTransform.parent;
-                }
-                else
-                {
-                    targetParent = player.PlayerCameraTransform;
-                }
+                ragdollPoser = ragdollSync.Poser;
             }
 
-            // 1. 물리적 부모를 NetworkObject가 부착된 CameraPivot으로 설정 (에러 해결!)
+            bool attachedToHand = false;
+
+            if (ragdollPoser != null && ragdollPoser.CarryAnchor != null)
+            {
+                // 래그돌 관절 뼈 속으로 직접 자식을 넣는 대신 CarryAnchor를 타겟으로 지정
+                targetParent = ragdollPoser.CarryAnchor;
+                attachedToHand = true;
+            }
+            else if (holderNetObj.TryGetComponent<FirstPersonLook>(out var playerCamera) && playerCamera.PlayerCameraTransform != null)
+            {
+                targetParent = playerCamera.PlayerCameraTransform;
+            }
+
+            // 2. 부모 설정
             transform.SetParent(targetParent, false);
 
-            // 2. CameraPivot의 자식(로컬 좌표계)이 되었으므로, 기준점 계산이 매우 단순하고 정확해집니다.
-            if (_customCarry != null && _customCarry.TryGetCarryTransform(targetParent, out Vector3 customPos, out Quaternion customRot))
+            // 3. 트랜스폼 초기화
+            if (attachedToHand)
             {
-                // 조준 상태일 때: 해당 기준점의 로컬 좌표 변환 적용
-                transform.localPosition = targetParent.InverseTransformPoint(customPos);
-                transform.localRotation = Quaternion.Inverse(targetParent.rotation) * customRot;
+                transform.localPosition = Vector3.zero;
+                transform.localRotation = Quaternion.identity;
             }
             else
             {
-                // CameraPivot의 정면(Z축)으로 carryDistance, 아래(Y축)로 carryHeight만큼 배치
                 transform.localPosition = new Vector3(0, carryHeight, carryDistance);
                 transform.localRotation = Quaternion.identity;
             }
 
-            UpdateActualVisibility(_isVisible.Value); // 아이템을 들고 있으면 항상 보이게 명시적 호출 -> 타이밍 이슈때문에 한번 더 해줌.
-
+            // 스케일 보정
             Vector3 parentScale = targetParent.lossyScale;
             transform.localScale = new Vector3(
-                _originalLocalScale.x / parentScale.x,
-                _originalLocalScale.y / parentScale.y,
-                _originalLocalScale.z / parentScale.z
+                _originalLocalScale.x / Mathf.Max(parentScale.x, 0.0001f),
+                _originalLocalScale.y / Mathf.Max(parentScale.y, 0.0001f),
+                _originalLocalScale.z / Mathf.Max(parentScale.z, 0.0001f)
             );
         }
     }
@@ -283,6 +284,18 @@ public class PickupItem : NetworkBehaviour
         }
     }
 
+    private void DropPos()
+    {
+        _pickupListener?.OnDropped();
+        _holder = null;
+        NetworkObject.RemoveOwnership();
+
+        //들기 자세 해제
+        _holderRagdollPoser?.SetCarryRequested(false);
+        _holderRagdollPoser?.SetCarryTarget(null);
+        _holderRagdollPoser = null;
+    }
+
     public void SetVisibility(bool visible)
     {
         if (!IsServer) return;
@@ -334,9 +347,7 @@ public class PickupItem : NetworkBehaviour
     {
         if (!IsServer) return;
 
-        _pickupListener?.OnDropped();
-        _holder = null;
-        NetworkObject.RemoveOwnership();
+        DropPos();
 
         // 1. 모든 클라이언트의 자식 관계를 끊음 (기존 RPC 재활용)
         DetachFromHolderClientRpc(throwerNetId, direction, force, torque);

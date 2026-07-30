@@ -4,14 +4,19 @@ using UnityEngine.InputSystem;
 
 public class PlayerInteraction : NetworkBehaviour
 {
+    [Header("Interaction Settings")]
     [SerializeField] private Camera playerCamera;
-    [SerializeField] private float interactDistance = 3f;
+    [SerializeField] private float interactDistance = 5f;
+    [SerializeField] private float pickupRadius = 0.2f;    // 줍기 판정 구체 반지름 (작은 아이템 보정용)
+    [SerializeField] private LayerMask pickupLayerMask = ~0;
+
     private BoxPlacementPreview _placementPreview; // 박스 배치 프리뷰를 관리하는 컴포넌트(스크립트)
     private PlayerInventory _inventory; // 플레이어의 인벤토리 인터페이스
     public PlayerInventory Inventory => _inventory; // 외부에서 인벤토리 접근용
     private PickupItem hoveredItem; // 플레이어가 현재 바라보고 있는 아이템
     // 두꺼비집 관련 컴포넌트
     private LightInteraction _lightInteraction;
+
     // ======== 아이템 던지기(강하게) 관련 변수 ========
     private float gaugeChargeTime = 1.5f; // 게이지가 최대치까지 충전되는 시간
     private float minThrowForce = 4f; // 최소 던지기 힘 -> 0.3초에서 시작
@@ -20,10 +25,13 @@ public class PlayerInteraction : NetworkBehaviour
     private bool _isChargingThrow = false;
     private float _currentThrowGauge = 0f; // 0 ~ 1 사이의 UI용 게이지 값
     public float CurrentThrowGauge => _currentThrowGauge; // UI에서 접근할 프로퍼티
+
     [Header("Throw Rotation Settings")]
     [SerializeField] private float minThrowTorque = 1f;  // 살짝 던졌을 때의 회전력
     [SerializeField] private float maxThrowTorque = 8f;  // 풀차징으로 던졌을 때의 회전력
-    [SerializeField] private InputActionReference dropActionRef;
+    
+    public RagdollPoser playerRagDollPoser; // 인스펙터에서 연결
+
     private void Awake()
     {
         if (playerCamera == null)
@@ -59,6 +67,49 @@ public class PlayerInteraction : NetworkBehaviour
     }
 
     /// <summary>
+    /// 구체 내부에서 가장 조준선(카메라 정면)에 가까운 PickupItem을 선별해서 가져옵니다.
+    /// </summary>
+    private PickupItem GetTargetPickupItem()
+    {
+        if (playerCamera == null) return null;
+
+        Ray ray = new Ray(playerCamera.transform.position, playerCamera.transform.forward);
+
+        // 1. 먼저 정밀한 Raycast 시도 (작은 아이템이라도 조준점에 정확히 걸리면 최우선)
+        if (Physics.Raycast(ray, out RaycastHit rayHit, interactDistance, pickupLayerMask))
+        {
+            if (rayHit.collider.TryGetComponent<PickupItem>(out PickupItem exactItem))
+            {
+                return exactItem;
+            }
+        }
+
+        // 2. Raycast 실패 시 SphereCastAll로 주변 영역의 모든 히트 오브젝트 탐색
+        RaycastHit[] hits = Physics.SphereCastAll(ray, pickupRadius, interactDistance, pickupLayerMask);
+
+        PickupItem bestItem = null;
+        float closestDistance = float.MaxValue;
+
+        foreach (var hit in hits)
+        {
+            // 플레이어 자신 또는 자식 콜라이더는 제외
+            if (hit.collider.transform.IsChildOf(transform)) continue;
+
+            if (hit.collider.TryGetComponent<PickupItem>(out PickupItem item))
+            {
+                // 가장 가까운 거리에 있는 아이템 선택
+                if (hit.distance < closestDistance)
+                {
+                    closestDistance = hit.distance;
+                    bestItem = item;
+                }
+            }
+        }
+
+        return bestItem;
+    }
+
+    /// <summary>
     /// [줍기 전용 키] 기존 OnInteract의 줍기 로직만 상속받음
     /// </summary>
     public void OnPickupInput(InputAction.CallbackContext context)
@@ -81,13 +132,11 @@ public class PlayerInteraction : NetworkBehaviour
             return; // 배치를 시도했으므로 아래 줍기 로직은 타지 않음
         }
 
-        if (playerCamera == null) return;
-        if (Physics.Raycast(playerCamera.transform.position, playerCamera.transform.forward, out RaycastHit hit, interactDistance))
+        // 통합 탐색 함수 사용
+        PickupItem targetItem = GetTargetPickupItem();
+        if (targetItem != null)
         {
-            if (hit.collider.TryGetComponent<PickupItem>(out PickupItem pickupItem))
-            {
-                TryPickupServerRpc(new NetworkObjectReference(pickupItem.NetworkObject));
-            }
+            TryPickupServerRpc(new NetworkObjectReference(targetItem.NetworkObject));
         }
     }
 
@@ -328,7 +377,7 @@ public class PlayerInteraction : NetworkBehaviour
         if (!IsOwner) return;
         if (!IsHoldingItem()) return;
         var heldItem = GetCurrentHeldItem();
-        if (heldItem == null || !heldItem.TryGetComponent<PolaroidCamera>(out var cameraTool)) return;
+        if (heldItem == null || !heldItem.TryGetComponent<ICameraTool>(out var cameraTool)) return;
         if (context.performed) cameraTool.Aim(true);
         else if (context.canceled) cameraTool.Aim(false);
     }

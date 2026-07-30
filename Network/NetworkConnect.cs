@@ -1,4 +1,6 @@
 using System.Collections;
+using Netcode.Transports.Facepunch;
+using Steamworks;
 using TMPro;
 using Unity.Netcode;
 using UnityEngine;
@@ -7,14 +9,20 @@ using UnityEngine.UI;
 public class NetworkConnect : MonoBehaviour
 {
     public static NetworkConnect Instance { get; private set; }
+    public string RoomCode { get; private set; }
     [SerializeField] private Button hostButton;
     [SerializeField] private Button clientButton;
     [SerializeField] private string lobbySceneName = "LobbyScene";
     [Min(0f)]
     public int MaxPlayers { get; set; } = 4;
+    // Steam Relay 관련
+    [SerializeField] private FacepunchTransport transport;
+    [SerializeField] private TMP_InputField roomCodeInputField;
+
     // 접속 실패 부분
     [SerializeField] private TMP_Text statusText;
     [SerializeField] private float autoResetDelay = 3.0f; // 튕긴 후 재시도까지 대기 시간 (3초)
+
     private void Awake()
     {
         // --- 싱글톤 및 DontDestroyOnLoad 설정 ---
@@ -28,6 +36,7 @@ public class NetworkConnect : MonoBehaviour
 
         //서버로 동작할 때만 실제로 호출되므로 host/client 구분 없이 항상 등록해도 무방
         NetworkManager.Singleton.ConnectionApprovalCallback = ApprovalCheck;
+
         // Host 버튼을 누르면 실행될 로직
         hostButton.onClick.AddListener(() =>
         {
@@ -37,14 +46,24 @@ public class NetworkConnect : MonoBehaviour
                 StartCoroutine(ResetConnectionUI("Fail to start host. Please check your network settings."));
                 return;
             }
+            RoomCode = SteamClient.SteamId.Value.ToString();
+
             HideButtons();
-            Debug.Log("Host started");
+            Debug.Log("Host started. Room code: " + SteamClient.SteamId.Value);
             NetworkManager.Singleton.SceneManager.LoadScene(lobbySceneName, UnityEngine.SceneManagement.LoadSceneMode.Single);
         });
 
         // Client 버튼을 누르면 실행될 로직
         clientButton.onClick.AddListener(() =>
         {
+            // 입력받은 코드를 targetSteamId로 파싱해서 세팅
+            if (!ulong.TryParse(roomCodeInputField.text, out ulong hostSteamId) || hostSteamId == 0)
+            {
+                StartCoroutine(ResetConnectionUI("잘못된 방 코드입니다."));
+                return;
+            }
+            transport.targetSteamId = hostSteamId;
+
             bool isClientStarted = NetworkManager.Singleton.StartClient();
             if (!isClientStarted)
             {
@@ -52,7 +71,7 @@ public class NetworkConnect : MonoBehaviour
                 return;
             }
             HideButtons();
-            Debug.Log("Client started");
+            Debug.Log("Client started. Target: " + hostSteamId);
         });
 
         // 클라이언트가 서버와 연결이 끊겼을 때 호출되는 콜백 등록

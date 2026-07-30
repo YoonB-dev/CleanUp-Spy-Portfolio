@@ -15,20 +15,6 @@ public interface IPickupListener
     void OnPickedUp();
     void OnDropped();
 }
-
-/// <summary>
-/// 아이템이 손에 들려있는 동안 PickupItem의 기본 캐리 위치(carryDistance/carryHeight)
-/// 대신 자기만의 위치/회전을 쓰고 싶으면 구현.
-/// 예: PolaroidCamera가 조준 중일 때 카메라 눈앞으로 바짝 당겨오는 것.
-///
-/// TryGetCarryTransform이 false를 반환하면 PickupItem은 평소처럼 기본 캐리 로직을 사용한다.
-/// (즉 "이번 프레임엔 내가 특수 위치를 원하지 않는다"는 뜻)
-/// </summary>
-public interface ICustomCarryTransform
-{
-    bool TryGetCarryTransform(Transform cameraTransform, out Vector3 position, out Quaternion rotation);
-}
-
 /// <summary>
 /// 아이템의 대분류. TrashCan처럼 "이 아이템을 어떻게 처리해야 하는지" 판단이 필요한
 /// 범용 시스템에서 구체 클래스 대신 이 값만 확인하도록 함.

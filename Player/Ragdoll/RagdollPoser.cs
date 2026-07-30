@@ -19,7 +19,8 @@ public class RagdollPoser : MonoBehaviour
     private const string RIGHT_THIGH_BONE_NAME = "Thigh.R";
     private const string LEFT_SHIN_BONE_NAME = "Shin.L";
     private const string RIGHT_SHIN_BONE_NAME = "Shin.R";
-
+    private const string LEFT_HAND_BONE_NAME = "Hand.L";
+    private const string RIGHT_HAND_BONE_NAME = "Hand.R";
     private static readonly Vector3 LOOK_PITCH_AXIS = new Vector3(1f, 0f, 0f);
 
     private static readonly string[] LEG_BONE_NAMES =
@@ -69,18 +70,17 @@ public class RagdollPoser : MonoBehaviour
     [Tooltip("시선 각도 중 머리가 따라가는 비율")]
     [SerializeField]
     private float _headPitchShare = 0.6f;
+    [Tooltip("시선 각도 중 가슴이 따라가는 비율")]
+    [SerializeField]
+    private float _chestPitchShare = 0.25f;
 
     [Tooltip("위를 볼 때 상체가 따라 젖혀지는 최대 각도")]
-    [SerializeField]
-    private float _maxLookUpAngle = 35f;
+    [SerializeField] private float _maxLookUpAngle = 35f;
 
     [Tooltip("아래를 볼 때 상체가 따라 숙이는 최대 각도")]
-    [SerializeField]
-    private float _maxLookDownAngle = 45f;
-
+    [SerializeField] private float _maxLookDownAngle = 45f;
     [Header("걷기")]
-    [SerializeField]
-    private bool _isWalkEnabled = true;
+    [SerializeField] private bool _isWalkEnabled = true;
 
     [SerializeField]
     private float _stepFrequency = 2.7f;
@@ -205,9 +205,67 @@ public class RagdollPoser : MonoBehaviour
     private float _punchWeight;
     private float _punchExtension;
 
+    [Header("양손 들기 (Carry)")]
+    [Tooltip("두 손 중간 지점 기준 CarryAnchor의 오프셋 (X:좌우, Y:위아래, Z:앞뒤)")]
+    [SerializeField] private Vector3 _carryAnchorOffset = new Vector3(0f, 0.1f, 0.3f); // 예: 위로 0.1, 앞쪽으로 0.3
+    [Tooltip("들기 중 팔 관절 스프링. 물건을 거의 즉각 따라가게 하려면 크게")]
+    [SerializeField]
+    private float _carrySpring = 9000f;
+
+    [Tooltip("들기 중 팔 관절 감쇠. 스프링과 비례해서 크게 줘야 떨림 없이 딱 붙음")]
+    [SerializeField]
+    private float _carryDamper = 450f;
+    [Tooltip("양손을 몸 안쪽(중앙)으로 모으는 각도. 값이 클수록 손이 중앙에 가깝게 모임")]
+    [SerializeField]
+    [Range(0f, 80f)]
+    private float _carryYaw = 30f;
+
+    [Tooltip("양손을 앞으로 뻗을 때의 상하각. 양수면 아래")]
+    [SerializeField]
+    [Range(-70f, 70f)]
+    private float _carryPitch = 10f;
+
+    [Tooltip("들기 상하를 카메라 시선에 연동")]
+    [SerializeField]
+    private bool _carryFollowViewPitch = true;
+
+    [Tooltip("들 때 팔을 장축 둘레로 비트는 각도")]
+    [SerializeField]
+    [Range(-180f, 180f)]
+    private float _carryRoll;
+
+    [Tooltip("들기 자세 전환 속도")]
+    [SerializeField]
+    private float _carryRampSpeed = 8f;
+    private bool _isCarryRequested;
+    private float _carryWeight;
+    private Transform _leftHandTransform;
+    private Transform _rightHandTransform;
+    private Transform _carryAnchor;
+    /// <summary>
+    /// 양손 중간 지점에 위치/회전을 매 프레임 맞추는 앵커.
+    /// PickupItem 등 외부에서 이 트랜스폼에 아이템을 SetParent하면 됨.
+    /// 손 뼈를 못 찾았으면 null.
+    /// </summary>
+    [Tooltip("양손을 기본 _carryYaw 각도로 들었을 때 두 손 사이의 기준 너비(m). 물건 너비가 이보다 작으면 손을 모으고, 크면 벌립니다.")]
+    [SerializeField]
+    private float _defaultCarryWidth = 0.4f;
+    public Transform CarryAnchor => _carryAnchor;
     private void Awake()
     {
         _driver = GetComponent<RagdollDriver>();
+
+        _leftHandTransform = FindBoneTransform(LEFT_HAND_BONE_NAME);
+        _rightHandTransform = FindBoneTransform(RIGHT_HAND_BONE_NAME);
+
+        if (_leftHandTransform != null && _rightHandTransform != null)
+        {
+            GameObject anchorObject = new GameObject($"{name}_CarryAnchor123123");
+            _carryAnchor = anchorObject.transform;
+            _carryAnchor.SetParent(transform, false);
+
+            _carryAnchor.localPosition = new Vector3(0f, 0.2f, 0.5f);
+        }
 
         if (!_driver.IsServerAuthoritative)
         {
@@ -235,6 +293,26 @@ public class RagdollPoser : MonoBehaviour
 
         ApplyBaseDrives();
         BuildArmPoses();
+    }
+
+    private void OnDestroy()
+    {
+        if (_carryAnchor != null)
+        {
+            Destroy(_carryAnchor.gameObject);
+        }
+    }
+
+    private Transform FindBoneTransform(string boneName)
+    {
+        foreach (Transform t in GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name == boneName)
+            {
+                return t;
+            }
+        }
+        return null;
     }
 
     private void BuildArmPoses()
@@ -342,7 +420,7 @@ public class RagdollPoser : MonoBehaviour
     /// <param name="spring">목표 회전을 따라가는 힘</param>
     /// <param name="damper">구동 감쇠</param>
     private static void SetJointDrive(
-        ConfigurableJoint joint, float spring, float damper)
+        ConfigurableJoint joint, float spring, float damper, float maxForce = -1f)
     {
         if (joint == null)
         {
@@ -354,6 +432,11 @@ public class RagdollPoser : MonoBehaviour
         JointDrive drive = joint.slerpDrive;
         drive.positionSpring = spring;
         drive.positionDamper = damper;
+        joint.slerpDrive = drive;
+        if(maxForce >= 0)
+        {
+            drive.maximumForce = maxForce;
+        }
         joint.slerpDrive = drive;
     }
 
@@ -430,8 +513,56 @@ public class RagdollPoser : MonoBehaviour
         _isPunching = _driver.TryGetPunchPose(
             out _isLeftPunch, out _punchWeight, out _punchExtension);
 
+        _carryWeight = Mathf.MoveTowards(
+            _carryWeight,
+            _isCarryRequested ? 1f : 0f,
+            _carryRampSpeed * deltaTime);
+
         ApplyWalkPose(swing);
         ApplyTorsoPose();
+    }
+
+    private void LateUpdate()
+    {
+        // 손 위치는 물리 결과라 서버/클라이언트 구분 없이 항상 갱신 (읽기 전용 작업)
+        if (_carryAnchor == null || _leftHandTransform == null || _rightHandTransform == null)
+        {
+            return;
+        }
+
+        Vector3 leftPos = _leftHandTransform.position;
+        Vector3 rightPos = _rightHandTransform.position;
+
+        Vector3 midpoint = (leftPos + rightPos) * 0.5f;
+
+        // 두 손을 잇는 축에 수직이면서 위를 향하는 방향으로 "정면"을 근사한다.
+        Vector3 handAxis = rightPos - leftPos;
+        Vector3 forward = Vector3.Cross(handAxis, Vector3.up);
+        if (forward.sqrMagnitude < 1e-4f)
+        {
+            forward = transform.forward;
+        }
+
+        // 1. 기본 수평 회전
+        Quaternion baseRotation = Quaternion.LookRotation(forward.normalized, Vector3.up);
+
+        // 2. 시선 상하 각도(Pitch) 반영
+        // carryFollowViewPitch 옵션이 켜져있고 _driver가 있다면 Pitch 각도를 회전에 적용
+        Quaternion pitchRotation = Quaternion.identity;
+        if (_carryFollowViewPitch && _driver != null)
+        {
+            pitchRotation = Quaternion.Euler(_driver.Pitch, 0f, 0f);
+        }
+
+        // 최종 앵커 회전 = 수평 정면 회전 * 시선 Pitch 회전
+        Quaternion anchorRotation = baseRotation * pitchRotation;
+
+        // 회전값(anchorRotation)을 적용하여 '앞쪽/위쪽' 오프셋이 더해진 월드 좌표 계산
+        Vector3 finalPosition = midpoint + (anchorRotation * _carryAnchorOffset);
+
+        // 오프셋이 반영된 위치로 매 프레임 갱신
+        _carryAnchor.SetPositionAndRotation(finalPosition, anchorRotation);
+
     }
 
     // 오른팔 뻗기 목표 오프셋. 팔 장축을 몸통 정면 방향에 정렬하고 롤은 자동 고정, yaw/pitch는 정면 반구로 클램프
@@ -543,16 +674,24 @@ public class RagdollPoser : MonoBehaviour
         return Quaternion.Inverse(reachBodyRest) * targetBody;
     }
 
+    private AnimationCurve _chestArchCurve = AnimationCurve.EaseInOut(0f, 0.3f, 1f, 1f);
     private void ApplyTorsoPose()
     {
-        float pitch = _isLookEnabled
+        float rawPitch = _isLookEnabled
             ? Mathf.Clamp(_driver.Pitch, -_maxLookUpAngle, _maxLookDownAngle)
             : 0f;
 
+        // 위를 볼수록(0~1) Chest 가중치가 곡선을 따라 커짐
+        float upProgress = _maxLookUpAngle > 0f
+            ? Mathf.Clamp01(Mathf.Max(0f, rawPitch) / _maxLookUpAngle)
+            : 0f;
+        float chestExtra = _chestArchCurve.Evaluate(upProgress);
+
         ApplyRotation(
             SPINE_BONE_NAME,
-            new Vector3(pitch * _spinePitchShare, GetPunchSpineTwist(), 0f));
-        ApplyRotation(HEAD_BONE_NAME, LOOK_PITCH_AXIS * (pitch * _headPitchShare));
+            new Vector3(rawPitch * _spinePitchShare, GetPunchSpineTwist(), 0f));
+        ApplyRotation(CHEST_BONE_NAME, LOOK_PITCH_AXIS * (rawPitch * _chestPitchShare * chestExtra));
+        ApplyRotation(HEAD_BONE_NAME, LOOK_PITCH_AXIS * (rawPitch * _headPitchShare));
     }
 
     private void ApplyWalkPose(float swing)
@@ -585,6 +724,11 @@ public class RagdollPoser : MonoBehaviour
                 offset = Quaternion.Slerp(offset, BuildReachOffset(arm), _reachWeight);
             }
 
+            if (_carryWeight > 0.001f)
+            {
+                offset = Quaternion.Slerp(offset, BuildCarryOffset(arm), _carryWeight);
+            }
+
             // 이번에 휘두르는 손만 펀치 자세로. 뻗기보다 뒤에 섞어 펀치를 우선
             bool isLeftArm = i != RIGHT_ARM_INDEX;
             bool isPunchArm = _isPunching && isLeftArm == _isLeftPunch;
@@ -593,11 +737,22 @@ public class RagdollPoser : MonoBehaviour
                 offset = Quaternion.Slerp(
                     offset, BuildPunchOffset(arm, _punchExtension), _punchWeight);
             }
+            else if (_carryWeight > 0.001f)
+            {
+                // carry 중엔 물건을 거의 즉각 따라가도록 전용 스프링으로 교체
+                SetJointDrive(arm.Joint,
+                    Mathf.Lerp(_limbPoseSpring, _carrySpring, _carryWeight),
+                    Mathf.Lerp(_limbPoseDamper, _carryDamper, _carryWeight), Mathf.Infinity);
+                SetJointDrive(arm.ForearmJoint,
+                    Mathf.Lerp(_limbPoseSpring, _carrySpring, _carryWeight),
+                    Mathf.Lerp(_limbPoseDamper, _carryDamper, _carryWeight), Mathf.Infinity);
+            }
+            else
+            {
+                ApplyArmDrive(arm.Joint, 0f);
+                ApplyArmDrive(arm.ForearmJoint, 0f);
+            }
 
-            // 감을 땐 또렷하게 당기고, 휘두르는 구간에서만 풀어 팔이 관성으로 날아가게
-            float springWeight = isPunchArm ? _punchWeight * _punchExtension : 0f;
-            ApplyArmDrive(arm.Joint, springWeight);
-            ApplyArmDrive(arm.ForearmJoint, springWeight);
             ApplyElbowPose(arm, isPunchArm);
 
             arm.Joint.SetTargetRotationLocal(
@@ -607,15 +762,13 @@ public class RagdollPoser : MonoBehaviour
 
     private void ApplyRotation(string boneName, Vector3 eulerOffset)
     {
-        if (!_bones.TryGetValue(boneName, out BoneData bone) ||
-            bone.Joint == null)
+        if (!_bones.TryGetValue(boneName, out BoneData bone) || bone.Joint == null)
         {
             return;
         }
 
-        bone.Joint.SetTargetRotationLocal(
-            bone.RestRotation * Quaternion.Euler(eulerOffset),
-            bone.RestRotation);
+        Quaternion targetRotation = bone.RestRotation * Quaternion.Euler(eulerOffset);
+        bone.Joint.SetTargetRotationLocal(targetRotation, bone.RestRotation);
     }
 
     private sealed class BoneData
@@ -681,5 +834,61 @@ public class RagdollPoser : MonoBehaviour
 
         public Quaternion ReachBodyRest { get; }
     }
+
+    #region  양손 잡기 관련
+    /// <summary>
+    /// 외부(PickupItem 등)에서 양손 들기 자세를 요청/해제할 때 호출.
+    /// 서버(권위) 인스턴스에서만 실제 팔 구동에 반영됨.
+    /// </summary>
+    public void SetCarryRequested(bool requested)
+    {
+        _isCarryRequested = requested;
+    }
+
+    /// <summary>
+    /// 양손 들기 목표 오프셋. 두 팔 모두 몸 안쪽(중앙)으로 모이도록 SideSign 기준 대칭 yaw를 준다.
+    /// (기존 뻗기의 "양수=바깥쪽" 관례를 반대로 뒤집어 중앙으로 모으는 방향으로 사용)
+    /// </summary>
+    [Header("양손 잡기 너비 보정")]
+    [Tooltip("어깨에서 손까지의 대략적인 팔 길이(m). 물건 너비에 따른 삼각함수 각도 계산에 사용됩니다.")]
+    [SerializeField] private float _armLength = 0.6f;
+
+    private Quaternion BuildCarryOffset(ArmPose arm)
+    {
+        float baseYaw = -_carryYaw * arm.SideSign; // 기본 안쪽 모임 각도
+        float finalYaw = baseYaw;
+
+        if (_driver.TryGetCarryHalfWidth(out float halfWidth) && halfWidth > 0.001f)
+        {
+            float targetWidth = halfWidth * 2f; // 물건의 전체 너비
+            float widthDelta = targetWidth - _defaultCarryWidth; // 너비 차이
+
+            // 절반 너비 변화량을 팔 길이로 나누어 추가 회전 각도(라디안 -> 도) 계산
+            // Mathf.Atan2(반폭 변화량, 팔 길이)
+            float additionalAngleDeg = Mathf.Atan2(widthDelta * 0.5f, _armLength) * Mathf.Rad2Deg;
+
+            // 오른팔(+1)은 바깥쪽(+), 왼팔(-1)은 바깥쪽(-)으로 추가 회전
+            float yawDelta = additionalAngleDeg * arm.SideSign;
+
+            finalYaw = baseYaw + yawDelta;
+        }
+
+        float pitch = _carryPitch;
+        if (_carryFollowViewPitch)
+        {
+            pitch += _driver.Pitch;
+        }
+
+        pitch = Mathf.Clamp(pitch, -REACH_MAX_PITCH, REACH_MAX_PITCH);
+        finalYaw = Mathf.Clamp(finalYaw, -REACH_MAX_YAW, REACH_MAX_YAW);
+
+        return BuildReachLocalOffset(arm.ReachBodyRest, finalYaw, pitch, _carryRoll * arm.SideSign);
+    }
+    public void SetCarryTarget(CarryGripPoints target)
+    {
+        _driver.SetCarryTarget(target);
+    }
+
+    #endregion
 }
 

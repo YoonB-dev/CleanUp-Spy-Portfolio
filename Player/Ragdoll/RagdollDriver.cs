@@ -173,6 +173,15 @@ public class RagdollDriver : MonoBehaviour
     public bool IsReachRequested =>
         _playerGrab != null && (_playerGrab.IsReaching || _playerGrab.IsGrabbing);
 
+
+    /// <summary>
+    /// 물건 집기용
+    /// </summary>
+    private CarryGripPoints _carryTarget;
+    private float _carryGripHalfWidth; // 잡는 순간 한 번만 계산, 이후 고정값
+    private float _hipsPitchRatio = 0.1f; // 0~1
+
+
     /// <summary>
     /// 현재 펀치 자세 상태. 펀치 중이 아니면 false.
     /// </summary>
@@ -752,10 +761,16 @@ public class RagdollDriver : MonoBehaviour
         }
 
         Vector3 targetPosition = _playerTransform.TransformPoint(_anchorLocalPosition);
+        
+        // 1. 카메라 Pitch(위/아래)에 따른 Hips 앵커의 상하 기울임 각도 계산
+        float hipsPitch = _pitch * _hipsPitchRatio;
+
+        // 2. 앵커 회전에 hipsPitch 적용 (X축 회전)
         Quaternion targetRotation =
             _playerTransform.rotation *
-            Quaternion.Euler(0f, GetPunchBodyYaw(), 0f) *
+            Quaternion.Euler(hipsPitch, GetPunchBodyYaw(), 0f) *
             _anchorLocalRotation;
+
         _anchorRigidbody.MovePosition(targetPosition);
         _anchorRigidbody.MoveRotation(targetRotation);
 
@@ -861,4 +876,35 @@ public class RagdollDriver : MonoBehaviour
 
         return null;
     }
+
+    #region 물건 잡기
+
+    /// <summary>
+    /// CarryGripPoints를 이용해서 그립의 좌우 폭을 결정한다
+    /// </summary>
+    /// <param name="target"></param>
+    public void SetCarryTarget(CarryGripPoints target)
+    {
+        _carryTarget = target;
+
+        if (target != null && target.LeftGripPoint != null && target.RightGripPoint != null)
+        {
+            _carryGripHalfWidth = Vector3.Distance(target.LeftGripPoint.position, target.RightGripPoint.position) * 0.5f;
+        }
+        else
+        {
+            _carryGripHalfWidth = 0f;
+        }
+    }
+
+    /// <summary>
+    /// 들기 시작 시점에 캐싱된 그립 폭의 절반(월드 단위). 그립 대상이 없으면 false.
+    /// </summary>
+    public bool TryGetCarryHalfWidth(out float halfWidth)
+    {
+        halfWidth = _carryGripHalfWidth;
+        return _carryTarget != null;
+    }
+
+    #endregion
 }

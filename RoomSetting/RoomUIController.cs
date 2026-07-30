@@ -36,6 +36,8 @@ public class RoomUIController : MonoBehaviour
     [SerializeField] private TMP_Text participantCountText;
     [SerializeField] private Transform contentContainer; // 참여자 리스트 스크롤뷰의 Content
     [SerializeField] private GameObject playerEntryPrefab; // 참여자 리스트 항목 프리팹
+    [Header("방 ID")]
+    [SerializeField] private TMP_Text steamRoomIDText;
 
     private void Awake() => Instance = this;
 
@@ -81,6 +83,9 @@ public class RoomUIController : MonoBehaviour
 
         NetworkManager.Singleton.OnClientConnectedCallback += OnClientCountChanged;
         NetworkManager.Singleton.OnClientDisconnectCallback += OnClientCountChanged;
+
+        // 처음 시작 시 방 ID 텍스트 업데이트
+        steamRoomIDText.text = NetworkConnect.Instance?.RoomCode;
 
         // Start() 시점에는 아직 아무 이벤트도 발생하지 않았을 수 있으므로
         // 현재 상태를 UI에 최초 1회 강제로 반영해준다.

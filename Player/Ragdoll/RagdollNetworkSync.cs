@@ -31,14 +31,18 @@ public class RagdollNetworkSync : NetworkBehaviour
     private bool _isServerSim;
     private bool _hasPose;   // 클라: 첫 포즈 수신 여부
     private bool _applied;   // 클라: 최초 적용은 보간 없이 스냅
+    private RagdollPoser _ragdollPoser;
 
     /// <summary>
-    /// RagdollDriver가 분리(SetParent) 전에 본을 미리 잡아둔다.
+    /// 이탈 전 미리 바인딩된 RagdollPoser 참조. Player 쪽(이 컴포넌트)은 계층에서 안 떨어지므로
+    /// PickupItem 등 외부에서 홀더의 손 앵커를 찾을 때 이 프로퍼티를 통해야 안전함.
     /// </summary>
-    /// <param name="ragdollRoot">래그돌 루트 Transform</param>
+    public RagdollPoser Poser => _ragdollPoser;
+
     public void BindRagdoll(Transform ragdollRoot)
     {
         _bones = CollectBones(ragdollRoot);
+        _ragdollPoser = ragdollRoot.GetComponent<RagdollPoser>();
     }
 
     public override void OnNetworkSpawn()
