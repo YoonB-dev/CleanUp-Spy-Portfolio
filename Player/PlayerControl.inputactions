@@ -52,6 +52,15 @@
                     "initialStateCheck": false
                 },
                 {
+                    "name": "Diving",
+                    "type": "Button",
+                    "id": "4df05d32-20eb-44e9-b320-3b5208784d4f",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
                     "name": "Interaction_PickItem",
                     "type": "Button",
                     "id": "b6b75714-69a9-492c-8588-fde90865a1d2",
@@ -73,15 +82,6 @@
                     "name": "MafiaTrash",
                     "type": "Button",
                     "id": "26b518db-bda5-485d-a139-115c89972a7d",
-                    "expectedControlType": "",
-                    "processors": "",
-                    "interactions": "",
-                    "initialStateCheck": false
-                },
-                {
-                    "name": "MafiaDash",
-                    "type": "Button",
-                    "id": "4df05d32-20eb-44e9-b320-3b5208784d4f",
                     "expectedControlType": "",
                     "processors": "",
                     "interactions": "",
@@ -285,7 +285,7 @@
                     "interactions": "",
                     "processors": "",
                     "groups": "",
-                    "action": "MafiaDash",
+                    "action": "Diving",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },

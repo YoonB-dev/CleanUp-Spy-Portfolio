@@ -59,6 +59,10 @@ public class RagdollPoser : MonoBehaviour
     [Range(0f, 0.5f)]
     private float _limpDriveScale = 0.05f;
 
+    [Tooltip("다이빙 시 팔을 뻗는 각도(도). 몸이 눕는 걸 감안해 크게. 90=머리 너머로 쭉")]
+    [SerializeField]
+    private float _diveArmPitch = 80f;
+
     [Header("시선 (상하)")]
     [SerializeField]
     private bool _isLookEnabled = true;
@@ -413,6 +417,38 @@ public class RagdollPoser : MonoBehaviour
         }
     }
 
+    // 다이빙: 두 팔을 위로 뻗어 firm하게 고정하고 다리/상체는 흐물하게 푼다
+    private void ApplyDiveDrives()
+    {
+        float limpSpring = _limbPoseSpring * _limpDriveScale;
+        float limpDamper = _limbPoseDamper * _limpDriveScale;
+
+        foreach (ArmPose arm in _armPoses)
+        {
+            Quaternion offset =
+                BuildReachLocalOffset(arm.ReachBodyRest, 0f, -_diveArmPitch, 0f);
+            arm.Joint.SetTargetRotationLocal(arm.RestRotation * offset, arm.RestRotation);
+            SetJointDrive(arm.Joint, _limbPoseSpring, _limbPoseDamper);
+
+            if (arm.ForearmJoint != null)
+            {
+                arm.ForearmJoint.SetTargetRotationLocal(arm.ForearmRest, arm.ForearmRest);
+                SetJointDrive(arm.ForearmJoint, _limbPoseSpring, _limbPoseDamper);
+            }
+        }
+
+        foreach (string boneName in LEG_BONE_NAMES)
+        {
+            SetJointDrive(FindJoint(boneName), limpSpring, limpDamper);
+        }
+
+        foreach (string boneName in TORSO_BONE_NAMES)
+        {
+            SetJointDrive(FindJoint(boneName), _torsoSpring * _limpDriveScale,
+                _torsoDamper * _limpDriveScale);
+        }
+    }
+
     /// <summary>
     /// 본 관절 구동력을 쓰는 유일한 경로. maximumForce는 프리팹 값을 유지한다.
     /// </summary>
@@ -478,7 +514,14 @@ public class RagdollPoser : MonoBehaviour
 
             if (isLimp)
             {
-                ApplyLimpDrives();
+                if (_driver.IsDiving)
+                {
+                    ApplyDiveDrives();
+                }
+                else
+                {
+                    ApplyLimpDrives();
+                }
             }
             else
             {

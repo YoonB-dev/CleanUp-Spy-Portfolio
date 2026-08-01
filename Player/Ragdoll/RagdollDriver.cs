@@ -38,7 +38,7 @@ public class RagdollDriver : MonoBehaviour
     private const float PUNCH_WINDUP_YAW_RATIO = 0.45f;
 
     // 오너 1인칭 카메라에서 숨길 레이어와 항상 숨기는 머리 렌더러. 몸통 등은 인스펙터 추가 목록으로
-    private const int LOCAL_HIDDEN_LAYER = 30;
+    public const int LOCAL_HIDDEN_LAYER = 30;
     private static readonly string[] OWNER_HIDDEN_RENDERER_NAMES =
     {
         "Head_Face", "Cap", "Ear_Cap", "Head_Robe_1", "Face_Glass", "Brooch"
@@ -106,6 +106,7 @@ public class RagdollDriver : MonoBehaviour
     private Vector3 _anchorLocalPosition;
     private Quaternion _anchorLocalRotation = Quaternion.identity;
     private bool _isLimp;
+    private bool _isDiving;
     private bool _isGrabbed;
     private float _yaw;
     private float _pitch;
@@ -153,6 +154,9 @@ public class RagdollDriver : MonoBehaviour
     /// 현재 죽은 척 상태 여부
     /// </summary>
     public bool IsLimp => _isLimp;
+
+    /// <summary>다이빙으로 쓰러진 상태인지 (넉다운과 구분)</summary>
+    public bool IsDiving => _isDiving;
 
     /// <summary>
     /// 물리를 이 인스턴스에서 시뮬할지 여부 (서버 또는 비네트워크). 클라는 네트워크 수신만.
@@ -370,6 +374,28 @@ public class RagdollDriver : MonoBehaviour
     }
 
     /// <summary>
+    /// 모든 본 속도를 지정값으로 덮어쓴다. 이전 이동 관성을 무시하고 일정하게 발사(다이빙).
+    /// </summary>
+    /// <param name="velocity">설정할 속도 (m/s)</param>
+    public void SetBonesVelocity(Vector3 velocity)
+    {
+        if (_boneBodies == null)
+        {
+            return;
+        }
+
+        foreach (Rigidbody body in _boneBodies)
+        {
+            if (body == null || body.isKinematic)
+            {
+                continue;
+            }
+
+            body.linearVelocity = velocity;
+        }
+    }
+
+    /// <summary>
     /// 넉백으로 날아가며 돌도록 모든 본에 각속도를 더한다.
     /// </summary>
     /// <param name="angularVelocity">추가할 각속도 (rad/s, 월드)</param>
@@ -487,7 +513,7 @@ public class RagdollDriver : MonoBehaviour
     /// 죽은 척 상태를 전환하고 좌표계 주도권을 변경
     /// </summary>
     /// <param name="isLimp">죽은 척 상태 여부</param>
-    public void SetLimp(bool isLimp)
+    public void SetLimp(bool isLimp, bool diving = false)
     {
         if (_isLimp == isLimp)
         {
@@ -495,6 +521,7 @@ public class RagdollDriver : MonoBehaviour
         }
 
         _isLimp = isLimp;
+        _isDiving = isLimp && diving;
 
         if (isLimp)
         {
@@ -831,8 +858,8 @@ public class RagdollDriver : MonoBehaviour
     /// </summary>
     private void SyncPlayerToRagdoll()
     {
-        Quaternion rotation = Quaternion.Euler(0f, BodyRotation.eulerAngles.y, 0f);
-
+        // 회전은 건드리지 않는다. 구르는 래그돌 yaw를 따라가면 다이빙/넉다운 중 카메라가 같이 돈다.
+        // 위치만 따라가고, 회전은 쓰러질 때 방향 그대로 유지한다.
         Vector3 position = _hips.position;
 
         // 지면을 찾으면 그 위에 캡슐을 세우고, 못 찾으면(공중·낭떠러지) 직전 높이를 유지
@@ -845,7 +872,7 @@ public class RagdollDriver : MonoBehaviour
             position.y = _playerTransform.position.y;
         }
 
-        _playerTransform.SetPositionAndRotation(position, rotation);
+        _playerTransform.position = position;
     }
 
     // hips 바로 아래 지면 높이를 찾는다. 지면 레이어만 맞아 래그돌 자기 뼈는 무시한다

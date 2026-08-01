@@ -62,22 +62,45 @@ public class PlayerKnockdown : NetworkBehaviour
             return;
         }
 
-        _getUpTime = Time.time + DOWN_DURATION;
-
-        if (!_isDownNet.Value)
-        {
-            _isDownNet.Value = true;
-            _driver.SetLimp(true);
-
-            // 들고 있던 건 놓친다
-            if (_playerInteraction != null)
-            {
-                _playerInteraction.ServerDropHeldItem();
-            }
-        }
-
+        EnterDown(dropItem: true, diving: false);
         _driver.ApplyKnockbackVelocity(velocity);
         _driver.ApplyKnockbackSpin(angularVelocity);
+    }
+
+    /// <summary>
+    /// 스스로 앞으로 몸을 던지는 다이빙. 넉다운과 같은 흐름이되 아이템은 유지. [서버 전용]
+    /// </summary>
+    /// <param name="velocity">날아갈 속도 변화량 (m/s)</param>
+    /// <param name="angularVelocity">몸을 앞으로 눕히는 각속도 (rad/s, 월드)</param>
+    public void ServerDive(Vector3 velocity, Vector3 angularVelocity)
+    {
+        if (!IsServer || _driver == null)
+        {
+            return;
+        }
+
+        EnterDown(dropItem: false, diving: true);
+        _driver.SetBonesVelocity(velocity);
+        _driver.ApplyKnockbackSpin(angularVelocity);
+    }
+
+    // 다운 상태 진입. 이미 다운이면 기상 시각만 미룬다.
+    private void EnterDown(bool dropItem, bool diving)
+    {
+        _getUpTime = Time.time + DOWN_DURATION;
+
+        if (_isDownNet.Value)
+        {
+            return;
+        }
+
+        _isDownNet.Value = true;
+        _driver.SetLimp(true, diving);
+
+        if (dropItem && _playerInteraction != null)
+        {
+            _playerInteraction.ServerDropHeldItem();
+        }
     }
 
     private void Update()

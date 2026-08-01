@@ -117,6 +117,15 @@ public class FirstPersonLook : NetworkBehaviour
         playerCamera.cullingMask &= ~(1 << layer);
     }
 
+    /// <summary>제외했던 레이어를 다시 카메라 렌더링에 포함 (3인칭에서 자기 몸 보이기용)</summary>
+    /// <param name="layer">포함할 레이어 인덱스</param>
+    public void IncludeLayerInCamera(int layer)
+    {
+        if (playerCamera == null) return;
+
+        playerCamera.cullingMask |= 1 << layer;
+    }
+
     public void SetClipOrigin()
     {
         if (!IsOwner || playerCamera == null) return;
