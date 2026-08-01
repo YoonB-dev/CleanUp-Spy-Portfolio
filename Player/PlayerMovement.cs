@@ -16,6 +16,18 @@ public class PlayerMovement : NetworkBehaviour
     [SerializeField] private LayerMask groundLayer;
     private Vector2 _serverMoveInput;
     public Vector2 MoveInput => _serverMoveInput;
+
+    /// <summary>
+    /// 발을 디딜 수 있는 레이어(Ground/Wall/Item). 래그돌 기상 시 지면 높이 재판정에 사용
+    /// </summary>
+    public LayerMask GroundLayer => groundLayer;
+
+    /// <summary>
+    /// 서 있을 때 루트 원점이 캡슐 바닥보다 위에 있는 높이(월드 기준). <br/>
+    /// </summary>
+    public float StandingGroundOffset =>
+        (characterController.height * 0.5f - characterController.center.y)
+        * transform.lossyScale.y;
     private float verticalVelocity;
 
     private const float GRAB_DRAG_SPEED = 20f;             // 붙잡혔을 때 끌려오는 최대 속도

@@ -54,7 +54,8 @@ public class PlayerKnockdown : NetworkBehaviour
     /// 쓰러진 상태에서 또 맞으면 기상 시각이 밀리고 속도가 추가된다.
     /// </summary>
     /// <param name="velocity">날아갈 속도 변화량 (m/s)</param>
-    public void ServerKnockdown(Vector3 velocity)
+    /// <param name="angularVelocity">날아가며 도는 각속도 (rad/s, 월드)</param>
+    public void ServerKnockdown(Vector3 velocity, Vector3 angularVelocity)
     {
         if (!IsServer || _driver == null)
         {
@@ -76,6 +77,7 @@ public class PlayerKnockdown : NetworkBehaviour
         }
 
         _driver.ApplyKnockbackVelocity(velocity);
+        _driver.ApplyKnockbackSpin(angularVelocity);
     }
 
     private void Update()

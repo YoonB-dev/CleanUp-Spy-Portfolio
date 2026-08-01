@@ -38,11 +38,18 @@ public class PlayerPunch : NetworkBehaviour
     [Range(0f, 1.5f)]
     private float _launchUpward = 0.85f;
 
+    [Tooltip("맞은 플레이어가 날아가며 도는 회전 속도(도/초). 스윙 손 방향으로 돈다")]
+    [SerializeField]
+    private float _knockbackSpin = 360f;
+
+    // 넉백 옆방향 각도
+    private const float LAUNCH_SIDE_ANGLE = 70f;
+
     private const int HIT_BUFFER_SIZE = 16;
 
     private float _punchStartTime = float.NegativeInfinity;   // [서버] 현재 펀치 시작 시각
     private bool _isLeftHand;                                 // [서버] 이번에 휘두르는 손
-    private int _punchId;                                     // [서버] 펀치마다 증가. 한 펀치에 한 번만 맞게
+    private int _punchId;                                     // [서버] 펀치마다 증가. 같은 대상은 한 펀치에 한 번만
     private int _hitPunchId = -1;                             // [서버] 이미 타격이 들어간 펀치
     private bool _punchHeld;                                  // [Owner] 키 홀드 상태
     private float _nextPunchRequestTime;                      // [Owner] 다음 연타 요청 시각
@@ -50,15 +57,8 @@ public class PlayerPunch : NetworkBehaviour
     private RagdollDriver _driver;
     private PlayerKnockdown _knockdown;
     private readonly Collider[] _hitBuffer = new Collider[HIT_BUFFER_SIZE];
-    // 판정 1회 내 중복 타격 방지 (한 대상의 뼈 여러 개가 동시에 걸린다)
+    // 물체 중복 타격 방지 (한 물체의 콜라이더 여러 개가 동시에 걸린다)
     private readonly HashSet<Component> _hitTargets = new HashSet<Component>();
-
-    // 네트워크에 스폰되지 않았으면(오프라인 테스트) 이 인스턴스가 곧 오너이자 서버
-    private bool IsOffline => !IsSpawned;
-
-    private bool HasInputAuthority => IsOffline || IsOwner;
-
-    private bool HasHitAuthority => IsOffline || IsServer;
 
     // 주먹이 나가는 구간. 이때만 타격 판정을 돌린다
     private bool IsStriking
@@ -125,7 +125,7 @@ public class PlayerPunch : NetworkBehaviour
     /// <summary>펀치 입력(H키). 누르는 동안 양손을 번갈아 반복한다.</summary>
     public void OnPunch(InputAction.CallbackContext context)
     {
-        if (!HasInputAuthority)
+        if (!IsOwner)
         {
             return;
         }
@@ -143,21 +143,14 @@ public class PlayerPunch : NetworkBehaviour
 
     private void Update()
     {
-        if (!_punchHeld || !HasInputAuthority || Time.time < _nextPunchRequestTime)
+        if (!_punchHeld || !IsOwner || Time.time < _nextPunchRequestTime)
         {
             return;
         }
 
         _nextPunchRequestTime = Time.time + PUNCH_INTERVAL;
 
-        if (IsOffline)
-        {
-            ServerStartPunch();
-        }
-        else
-        {
-            RequestPunchServerRpc();
-        }
+        RequestPunchServerRpc();
     }
 
     [ServerRpc]
@@ -186,11 +179,12 @@ public class PlayerPunch : NetworkBehaviour
     }
 
     /// <summary>
-    /// 주먹이 나가는 동안 매 물리 스텝 타격을 판정한다. 한 펀치에 한 번만 들어간다. [서버 전용]
+    /// 주먹이 나가는 동안 매 물리 스텝 타격을 판정한다. 플레이어는 조준한 한 명
+    /// (주먹에 가장 가까운)만 다운시키고, 물체는 범위에 든 만큼 모두 밀어낸다. [서버 전용]
     /// </summary>
     private void FixedUpdate()
     {
-        if (!HasHitAuthority || !IsStriking || _punchId == _hitPunchId)
+        if (!IsServer || !IsStriking || _punchId == _hitPunchId)
         {
             return;
         }
@@ -206,9 +200,41 @@ public class PlayerPunch : NetworkBehaviour
         _hitTargets.Clear();
         bool didHit = false;
 
+        // 플레이어는 조준한 한 명(주먹에 가장 가까운)만 다운, 물체는 걸린 대로 모두 밀어낸다
+        PlayerKnockdown target = null;
+        float targetSqr = float.PositiveInfinity;
+
         for (int i = 0; i < count; i++)
         {
-            didHit |= TryHit(_hitBuffer[i]);
+            Collider hit = _hitBuffer[i];
+            Transform victim = ResolveVictimRoot(hit);
+
+            if (victim != null)
+            {
+                // 자기 몸(캡슐, 자기 래그돌 뼈)은 제외
+                if (victim == transform || !victim.TryGetComponent(out PlayerKnockdown knockdown))
+                {
+                    continue;
+                }
+
+                // 걸린 뼈가 주먹에 가장 가까운 플레이어를 조준 대상으로
+                float sqr = hit.bounds.SqrDistance(fist);
+                if (sqr < targetSqr)
+                {
+                    targetSqr = sqr;
+                    target = knockdown;
+                }
+                continue;
+            }
+
+            didHit |= TryPushObject(hit);
+        }
+
+        if (target != null)
+        {
+            Vector3 spin = Vector3.up * (SwingSign * _knockbackSpin * Mathf.Deg2Rad);
+            target.ServerKnockdown(SwingLaunchDirection() * _knockbackSpeed, spin);
+            didHit = true;
         }
 
         if (didHit)
@@ -217,30 +243,9 @@ public class PlayerPunch : NetworkBehaviour
         }
     }
 
-    // 콜라이더 하나를 판정. 플레이어면 날려 쓰러뜨리고, 물체면 밀어낸다
-    private bool TryHit(Collider hit)
+    // 물체 하나를 밀어낸다. 이미 민 물체(콜라이더 여러 개)는 건너뛴다
+    private bool TryPushObject(Collider hit)
     {
-        Transform victim = ResolveVictimRoot(hit);
-
-        if (victim != null)
-        {
-            // 자기 몸(캡슐, 자기 래그돌 뼈)은 제외
-            if (victim == transform || !_hitTargets.Add(victim))
-            {
-                return false;
-            }
-
-            PlayerKnockdown knockdown = victim.GetComponent<PlayerKnockdown>();
-            if (knockdown == null)
-            {
-                return false;
-            }
-
-            knockdown.ServerKnockdown(
-                GetLaunchDirection(victim.position) * _knockbackSpeed);
-            return true;
-        }
-
         Rigidbody body = hit.attachedRigidbody;
         if (body == null || body.isKinematic || !_hitTargets.Add(body))
         {
@@ -270,7 +275,18 @@ public class PlayerPunch : NetworkBehaviour
         return knockdown != null ? knockdown.transform : null;
     }
 
-    // 대상을 밀어낼 방향. 나에게서 멀어지는 수평 방향에 위쪽을 섞는다
+    // 스윙 방향 부호. 왼손은 오른쪽, 오른손은 왼쪽
+    private float SwingSign => _isLeftHand ? 1f : -1f;
+
+    // 플레이어 넉백 방향. 정면을 스윙 쪽으로 각도만큼 튼 뒤 위를 섞는다
+    private Vector3 SwingLaunchDirection()
+    {
+        Vector3 horizontal = Quaternion.AngleAxis(SwingSign * LAUNCH_SIDE_ANGLE, Vector3.up)
+                             * transform.forward;
+        return (horizontal + Vector3.up * _launchUpward).normalized;
+    }
+
+    // 물체를 밀어낼 방향. 나에게서 멀어지는 수평 + 위
     private Vector3 GetLaunchDirection(Vector3 targetPosition)
     {
         Vector3 flat = targetPosition - transform.position;

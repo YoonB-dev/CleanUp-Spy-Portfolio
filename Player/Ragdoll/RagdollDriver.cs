@@ -30,6 +30,10 @@ public class RagdollDriver : MonoBehaviour
     // hips가 앵커에서 이 거리 이상 벗어나면 되돌린다 (누적 드리프트 방지)
     private const float ANCHOR_LEASH_DISTANCE = 0.4f;
 
+    // 기상 시 hips 아래 지면을 찾는 레이 (몸 관통 방지용 시작 높이 + 최대 탐색 거리)
+    private const float GROUND_RAY_START_HEIGHT = 0.6f;
+    private const float GROUND_RAY_DISTANCE = 5f;
+
     // 펀치를 감을 때는 타격 반대쪽으로 이만큼 틀어둔다 (허리 회전각 대비 비율)
     private const float PUNCH_WINDUP_YAW_RATIO = 0.45f;
 
@@ -115,7 +119,6 @@ public class RagdollDriver : MonoBehaviour
     private Transform _rightForearm;
     private Rigidbody[] _boneBodies;
     private bool _wasMovementEnabled;
-    private bool _wasLookEnabled;
 
     /// <summary>
     /// 이 래그돌의 주인 Player. 래그돌은 월드로 분리돼 있어 계층으로는 거슬러 올라갈 수 없다.
@@ -367,6 +370,28 @@ public class RagdollDriver : MonoBehaviour
     }
 
     /// <summary>
+    /// 넉백으로 날아가며 돌도록 모든 본에 각속도를 더한다.
+    /// </summary>
+    /// <param name="angularVelocity">추가할 각속도 (rad/s, 월드)</param>
+    public void ApplyKnockbackSpin(Vector3 angularVelocity)
+    {
+        if (_boneBodies == null)
+        {
+            return;
+        }
+
+        foreach (Rigidbody body in _boneBodies)
+        {
+            if (body == null || body.isKinematic)
+            {
+                continue;
+            }
+
+            body.AddTorque(angularVelocity, ForceMode.VelocityChange);
+        }
+    }
+
+    /// <summary>
     /// 초기 시점 및 퍼펫 앵커 설정
     /// </summary>
     private void Start()
@@ -474,9 +499,7 @@ public class RagdollDriver : MonoBehaviour
         if (isLimp)
         {
             _wasMovementEnabled = _playerMovement.enabled;
-            _wasLookEnabled = _firstPersonLook.enabled;
             _playerMovement.enabled = false;
-            _firstPersonLook.enabled = false;
         }
         else
         {
@@ -487,7 +510,6 @@ public class RagdollDriver : MonoBehaviour
             SnapAnchorToPlayer();
 
             _playerMovement.enabled = _wasMovementEnabled;
-            _firstPersonLook.enabled = _wasLookEnabled;
         }
 
         ApplyAnchorDrives();
@@ -761,7 +783,7 @@ public class RagdollDriver : MonoBehaviour
         }
 
         Vector3 targetPosition = _playerTransform.TransformPoint(_anchorLocalPosition);
-        
+
         // 1. 카메라 Pitch(위/아래)에 따른 Hips 앵커의 상하 기울임 각도 계산
         float hipsPitch = _pitch * _hipsPitchRatio;
 
@@ -803,19 +825,44 @@ public class RagdollDriver : MonoBehaviour
 
     /// <summary>
     /// Player 좌표계를 현재 래그돌 몸체 위치에 정렬. 캡슐은 항상 세워둔 채 수평만 따라간다. <br/>
-    /// 누운 몸의 기울어진 회전으로 오프셋을 돌리면 2m 캡슐이 지면 아래에 박히고,
-    /// 일어날 때 그 위치로 앵커가 스냅되면서 래그돌이 바닥을 뚫고 떨어진다.
+    /// 높이는 hips 아래 실제 지면을 레이캐스트로 찾아 맞춘다. 누운 hips 높이를 그대로 쓰면
+    /// 캡슐 아래 절반이 땅에 박히고, 다운 시작 높이로 고정하면 경사·계단·물체 위로 굴러간
+    /// 경우 기상 시 실제 래그돌과 어긋나 스냅된다.
     /// </summary>
     private void SyncPlayerToRagdoll()
     {
         Quaternion rotation = Quaternion.Euler(0f, BodyRotation.eulerAngles.y, 0f);
 
-        // 높이는 쓰러지기 전 지면 높이를 유지한다. 누운 몸의 hips는 지면에 붙어 있어
-        // 그 높이를 따라가면 캡슐 아래 절반이 그대로 땅속으로 들어간다
         Vector3 position = _hips.position;
-        position.y = _playerTransform.position.y;
+
+        // 지면을 찾으면 그 위에 캡슐을 세우고, 못 찾으면(공중·낭떠러지) 직전 높이를 유지
+        if (TryGetGroundY(out float groundY))
+        {
+            position.y = groundY + _playerMovement.StandingGroundOffset;
+        }
+        else
+        {
+            position.y = _playerTransform.position.y;
+        }
 
         _playerTransform.SetPositionAndRotation(position, rotation);
+    }
+
+    // hips 바로 아래 지면 높이를 찾는다. 지면 레이어만 맞아 래그돌 자기 뼈는 무시한다
+    private bool TryGetGroundY(out float groundY)
+    {
+        Vector3 origin = _hips.position + Vector3.up * GROUND_RAY_START_HEIGHT;
+        if (Physics.Raycast(
+                origin, Vector3.down, out RaycastHit hit,
+                GROUND_RAY_START_HEIGHT + GROUND_RAY_DISTANCE,
+                _playerMovement.GroundLayer, QueryTriggerInteraction.Ignore))
+        {
+            groundY = hit.point.y;
+            return true;
+        }
+
+        groundY = 0f;
+        return false;
     }
 
     /// <summary>
