@@ -60,7 +60,6 @@ public class PaintSurfaceManager : MonoBehaviour
     /// <param name="isPaint">true = 페인트 칠하기, false = 지우기</param>
     public void DrawAt(int surfaceId, Vector2 uv, float radius, bool isPaint)
     {
-        
         if (_brushMaterial == null) return;
 
         if (!_surfaces.TryGetValue(surfaceId, out var surface) || surface.Canvas == null)
@@ -69,20 +68,62 @@ public class PaintSurfaceManager : MonoBehaviour
             return;
         }
 
-        RenderTexture temp = RenderTexture.GetTemporary(surface.Canvas.descriptor); // 임시 텍스처를 생성하는데, 재사용 가능하도록 GPU 메모리 풀에서 가져오는 느낌임. (RenderTexture.ReleaseTemporary로 반납해야 함) -> 밑에 있음.
+        // 1. 스케일 절대값 가져오기 (음수 스케일 방어)
+        Vector3 lossy = surface.transform.lossyScale;
+        Vector3 absScale = new Vector3(Mathf.Abs(lossy.x), Mathf.Abs(lossy.y), Mathf.Abs(lossy.z));
 
-        _brushMaterial.SetVector("_BrushUV", new Vector4(uv.x, uv.y, 0, 0)); // 브러쉬의 위치
-        _brushMaterial.SetFloat("_BrushRadius", radius); // 브러쉬의 반경
-        _brushMaterial.SetFloat("_BrushValue", isPaint ? 1f : 0f); // 브러쉬의 값 (1=칠하기, 0=지우기)
+        float meshWorldSize = 1f;
 
-        // 기존 캔버스를 읽어서 temp에 브러시를 합성한 결과를 그린 뒤, 다시 원본 캔버스로 복사
-        // Graphics.Blit(A, B, Material)은 A라는 텍스처(이미지)를 복사해서 B라는 이미지에 붙여넣는데, 그 사이에 Material(셰이더)라는 필터를 거치게 해라 라는 뜻이래..
+        var filter = surface.GetComponent<MeshFilter>();
+        if (filter != null && filter.sharedMesh != null)
+        {
+            Vector3 boundsSize = filter.sharedMesh.bounds.size;
+
+            // 💡 [개선] 3D 스케일 중 평균적인 대표 축 크기를 산출 (절대 스케일 적용)
+            Vector3 realWorldBounds = Vector3.Scale(boundsSize, absScale);
+
+            // X, Y, Z 중 가장 큰 실측값 기준
+            meshWorldSize = Mathf.Max(realWorldBounds.x, Mathf.Max(realWorldBounds.y, realWorldBounds.z));
+        }
+
+        meshWorldSize = Mathf.Max(0.0001f, meshWorldSize);
+
+        // 2. 머티리얼의 MainTexture Tiling(타일링) 수치 가져오기 (있는 경우)
+        Vector2 textureTiling = Vector2.one;
+        var renderer = surface.GetComponent<Renderer>();
+        if (renderer != null && renderer.sharedMaterial != null)
+        {
+            // 머티리얼에 _MainTex Tiling이 설정되어 있다면 가져옴
+            if (renderer.sharedMaterial.HasProperty("_MainTex"))
+            {
+                textureTiling = renderer.sharedMaterial.GetTextureScale("_MainTex");
+                textureTiling = new Vector2(Mathf.Abs(textureTiling.x), Mathf.Abs(textureTiling.y));
+            }
+        }
+
+        // 3. UV 반경 산출 (Tiling 역산 포함)
+        // Tiling이 클수록 UV는 축소되므로 UV 반경을 Tiling에 맞춰 보정
+        float baseUvRadius = radius / meshWorldSize;
+
+        // Tiling의 평균값을 적용하여 타일링으로 인한 크기 변형 방지
+        float tilingFactor = (textureTiling.x + textureTiling.y) * 0.5f;
+        if (tilingFactor > 0.0001f)
+        {
+            baseUvRadius *= tilingFactor;
+        }
+
+        // 안전 클램핑
+        float finalUvRadius = Mathf.Clamp(baseUvRadius, 0.001f, 0.5f);
+
+        RenderTexture temp = RenderTexture.GetTemporary(surface.Canvas.descriptor);
+
+        _brushMaterial.SetVector("_BrushUV", new Vector4(uv.x, uv.y, 0, 0));
+        _brushMaterial.SetFloat("_BrushRadius", finalUvRadius); // Float 전달
+        _brushMaterial.SetFloat("_BrushValue", isPaint ? 1f : 0f);
+
         Graphics.Blit(surface.Canvas, temp, _brushMaterial);
         Graphics.Blit(temp, surface.Canvas);
-        RenderTexture.ReleaseTemporary(temp); // 메모리에 있던 임시 텍스처를 반납한다는 의미임. -> 그래픽 작업은 무거워서 그냥 삭제를 하면 안됨.
-
-        // 오염도 수치 갱신 요청 (서버가 아니면 내부에서 무시됨)
-        //ScoreManager.Instance?.OnBrushApplied(isPaint);
+        RenderTexture.ReleaseTemporary(temp);
 
         if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsServer)
         {
