@@ -311,6 +311,7 @@ public class PlayerInventory : NetworkBehaviour
     {
         // 서버 권위로 래그돌 동작을 제어하므로 서버/호스트에서만 Pose 제어 호출
         if (!IsServer || _ragdollPoser == null) return;
+        if (_currentSlot.Value == 4) return;
 
         // 현재 선택된 슬롯의 아이템 가져오기
         PickupItem currentItem = GetCurrentEquippedItem();

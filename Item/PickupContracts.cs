@@ -25,3 +25,18 @@ public enum PickupCategory
     Box,    // 배치용 박스 (쓰레기통에 안 들어감)
     Tool    // 도구 (페인트건, 카메라, 청소도구 등 - 쓰레기통에 안 들어감, 보통 커스텀 캐리 로직을 가짐)
 }
+
+/// <summary>
+/// 조준(Aim) 가능한 도구가 구현하는 계약.
+/// </summary>
+public interface IZoomTool
+{
+    void Aim(bool isAiming);
+}
+/// <summary>
+/// 캡처(Capture) 가능한 도구가 구현하는 계약.
+/// </summary>
+public interface ICaptureTool
+{
+    void Capture();
+}

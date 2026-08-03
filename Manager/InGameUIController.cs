@@ -8,11 +8,17 @@ public class InGameUIController : NetworkBehaviour
 {
     public static InGameUIController Instance { get; private set; }
 
-    [SerializeField] private TMP_Text gameTimerTxt;
-    [SerializeField] private GameObject jobDisplayCanvas;
+    [SerializeField] private TMP_Text gameTimerTxt; 
+    [SerializeField] private GameObject jobDisplayCanvas; // 전체 캔버스 -> 시작하자마자 띄워서 일관성 유지
+    [SerializeField] private GameObject jobDisplayPanel; // 직업 결정되면 동작 -> 애니메이션으로 띄워짐
     [SerializeField] private GameObject jobDisplayImage;
     [SerializeField] private TMP_Text jobNotificationText;
-    public LocalizedString jobNotificationString; // 직업 알림 텍스트를 위한 LocalizedString
+
+    [Header("로컬라이제이션 string 연결")]
+    public LocalizedString jobNotificationString; 
+    [SerializeField] private LocalizedString citizenDesString;
+    [SerializeField] private LocalizedString mafiaDesString;
+    [SerializeField] private TMP_Text jobDescriptionText;
     private object[] _argsBuffer = new object[1]; // 한번만 생성하고 재활용 하기 위한 버파
 
     private void Awake()
@@ -23,6 +29,9 @@ public class InGameUIController : NetworkBehaviour
             return;
         }
         Instance = this;
+
+        jobDisplayCanvas.SetActive(true);
+        jobDisplayPanel.SetActive(false);
     }
 
     public override void OnNetworkSpawn()
@@ -58,17 +67,19 @@ public class InGameUIController : NetworkBehaviour
         switch (newState)
         {
             case TimerState.Ready:
-                // 5초 대기 시작 시점에 직업 패널을 킨다.
-                if (jobDisplayCanvas != null) jobDisplayCanvas.SetActive(true);
-
-                // 2. 로컬 플레이어 캐릭터나 직업 매니저를 통해 배정된 직업 정보를 띄운다.
-                string job = RoleAssignmentManager.Instance.IsMafia(NetworkManager.Singleton.LocalClientId) ? "job_mafia" : "job_citizen";
-                SetPlayerRoleNotification(job);
+                // 5초 대기 시작 시점에 직업 패널을 키고 애니메이션 적용.
+                jobDisplayPanel.SetActive(true);
+                bool isMafia = RoleAssignmentManager.Instance.IsMafia(NetworkManager.Singleton.LocalClientId);
+                SetPlayerRoleNotification(isMafia);
                 break;
 
             case TimerState.Playing:
                 // 3. 5초가 지나 본 게임 상태가 되면 직업 패널을 닫는다.
-                if (jobDisplayCanvas != null) jobDisplayCanvas.SetActive(false);
+                if (jobDisplayCanvas != null)
+                {
+                    jobDisplayCanvas.SetActive(false);
+                    jobDisplayPanel.SetActive(false);
+                }
                 break;
         }
     }
@@ -90,12 +101,12 @@ public class InGameUIController : NetworkBehaviour
     /// <summary>
     /// 플레이어의 직업 번역본을 알림 텍스트에 적용합니다.
     /// </summary>
-    public void SetPlayerRoleNotification(string jobTableKey)
+    public void SetPlayerRoleNotification(bool isMafia)
     {
         // 1. 해당 언어에 맞춰 번역된 직업 이름("마피아" 혹은 "Mafia")을 먼저 뽑아옵니다.
-        
+        string jobTableKey = isMafia ? "job_mafia" : "job_citizen";
         string translatedJobName = LocalizationSettings.StringDatabase.GetLocalizedString("InGame", jobTableKey);
-
+        
         // 2. 버퍼 배열에 번역된 결과값을 넣어줍니다.
         _argsBuffer[0] = translatedJobName;
 
@@ -104,5 +115,8 @@ public class InGameUIController : NetworkBehaviour
 
         // 4. UI 텍스트에 반영
         jobNotificationText.text = jobNotificationString.GetLocalizedString();
+
+        LocalizedString descriptionString = isMafia ? mafiaDesString : citizenDesString;
+        jobDescriptionText.text = descriptionString.GetLocalizedString();
     }
 }

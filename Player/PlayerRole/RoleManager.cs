@@ -22,7 +22,7 @@ public class RoleManager : NetworkBehaviour
         if (IsServer)
         {
             RoleAssignmentManager.Instance?.RegisterPlayer(this);
-            RoleAssignmentManager.Instance?.ForceAssignRole(OwnerClientId, PlayerRole.Mafia); // 테스트용 강제 마피아 배정
+            RoleAssignmentManager.Instance?.ForceAssignRole(clientId: OwnerClientId, PlayerRole.Mafia);
         }
 
         if (IsLocalPlayer)

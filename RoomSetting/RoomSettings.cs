@@ -10,17 +10,16 @@ public class RoomSettings : NetworkBehaviour
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server // 데이터 변조를 막기 위해 쓰기 권한은 서버(호스트)만 가집니다.
     );
-    private const int MIN_PLAYER_COUNT = 4;
+    private const int MIN_PLAYER_COUNT = 3;
     private const int MAX_PLAYER_COUNT = 12;
     private const int MIN_MAFIA_COUNT = 1;
     private const int MIN_PLAY_TIME = 300; // 5분
     private const int MAX_PLAY_TIME = 1800; // 30분
     private const int PLAY_TIME_STEP = 30; // 30초 단위로 증가/감소
-
+    
     public NetworkVariable<int> PlayerCount = new(MIN_PLAYER_COUNT);
     public NetworkVariable<int> MafiaCount = new(MIN_MAFIA_COUNT);
     public NetworkVariable<int> PlayTimeMinutes = new(MIN_PLAY_TIME);
-
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -194,7 +193,7 @@ public class RoomSettings : NetworkBehaviour
         int newCount = PlayerCount.Value - 1;
 
         // 플레이어 수가 줄어서 마피아 수 상한(절반)을 초과하면 마피아 수도 같이 줄임
-        int maxMafia = newCount / 2;
+        int maxMafia = (newCount - 1) / 2;
         if (MafiaCount.Value > maxMafia)
         {
             MafiaCount.Value = Mathf.Max(MIN_MAFIA_COUNT, maxMafia);
@@ -210,8 +209,8 @@ public class RoomSettings : NetworkBehaviour
 
         int absoluteMin = Mathf.Max(MIN_PLAYER_COUNT, AllPlayers.Count);
         value = Mathf.Clamp(value, absoluteMin, MAX_PLAYER_COUNT);
-        
-        int maxMafia = value / 2;
+
+        int maxMafia = (value - 1) / 2;
         if (MafiaCount.Value > maxMafia)
         {
             MafiaCount.Value = Mathf.Max(MIN_MAFIA_COUNT, maxMafia);
@@ -224,7 +223,7 @@ public class RoomSettings : NetworkBehaviour
     public void MafiaCountUp()
     {
         if (!IsServer) return;
-        int maxMafia = PlayerCount.Value / 2;
+        int maxMafia = (PlayerCount.Value - 1) / 2;
         if (MafiaCount.Value >= maxMafia) return;
         MafiaCount.Value++;
     }
@@ -240,7 +239,7 @@ public class RoomSettings : NetworkBehaviour
     {
         if (!IsServer) return;
 
-        int maxMafia = Mathf.Max(MIN_MAFIA_COUNT, PlayerCount.Value / 2);
+        int maxMafia = Mathf.Max(MIN_MAFIA_COUNT, (PlayerCount.Value - 1) / 2);
         value = Mathf.Clamp(value, MIN_MAFIA_COUNT, maxMafia);
 
         MafiaCount.Value = value;

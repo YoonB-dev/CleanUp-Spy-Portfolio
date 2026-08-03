@@ -3,7 +3,7 @@ using Unity.Netcode;
 using UnityEngine;
 
 [RequireComponent(typeof(PickupItem))]
-public class ZoomableItem : NetworkBehaviour, ICameraTool, IPickupListener
+public class ZoomableItem : NetworkBehaviour, IZoomTool, IPickupListener
 {
     [Header("Aim Local Transform (조준 시 위치/회전)")]
     [Tooltip("카메라 전방 거리")]
@@ -24,6 +24,8 @@ public class ZoomableItem : NetworkBehaviour, ICameraTool, IPickupListener
     public bool IsAiming => _isAiming.Value && _isEquipped.Value;
 
     private PickupItem _pickupItem;
+
+    public event System.Action<bool> OnAimingStateChanged; // 줌 했을 때 이벤트
 
     private void Awake()
     {
@@ -71,11 +73,6 @@ public class ZoomableItem : NetworkBehaviour, ICameraTool, IPickupListener
         SetAimingStateServerRpc(isAiming);
     }
 
-    public void Capture()
-    {
-        // 캡처 기능이 없는 일반 아이템이므로 비워둡니다.
-    }
-
     [ServerRpc]
     private void SetAimingStateServerRpc(bool isAiming)
     {
@@ -84,6 +81,10 @@ public class ZoomableItem : NetworkBehaviour, ICameraTool, IPickupListener
 
     private void OnAimingChanged(bool previousValue, bool newValue)
     {
+        OnAimingStateChanged?.Invoke(newValue); // 추가
+
+        if (!IsOwner) return;
+
         // 1. 부모 전환 및 위치/회전 적용
         UpdateParentAndTransform(newValue);
 
@@ -93,12 +94,9 @@ public class ZoomableItem : NetworkBehaviour, ICameraTool, IPickupListener
 
     private void UpdateParentAndTransform(bool isAiming)
     {
-        NetworkObject holderNetObj = null;
-        if (_pickupItem != null && _pickupItem.Holder != null)
-        {
-            holderNetObj = _pickupItem.Holder.NetworkObject;
-        }
+        if (NetworkManager.Singleton == null || NetworkManager.Singleton.LocalClient == null) return;
 
+        NetworkObject holderNetObj = NetworkManager.Singleton.LocalClient.PlayerObject;
         if (holderNetObj == null) return;
 
         if (isAiming)
@@ -143,11 +141,6 @@ public class ZoomableItem : NetworkBehaviour, ICameraTool, IPickupListener
 
         var localPlayerObj = NetworkManager.Singleton.LocalClient.PlayerObject;
         if (localPlayerObj == null || !localPlayerObj.TryGetComponent<FirstPersonLook>(out var look)) return;
-
-        if (_pickupItem == null || _pickupItem.Holder == null || _pickupItem.Holder.NetworkObject != localPlayerObj)
-        {
-            return;
-        }
 
         if (isAiming) look.SetClipNear();
         else look.SetClipOrigin();

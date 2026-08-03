@@ -10,6 +10,7 @@ public class MafiaPaintAction : NetworkBehaviour
     [Header("References")]
     [SerializeField] private GameObject paintGunObject; // 자식으로 넣어둔 페인트 총 오브젝트
     [SerializeField] private Transform muzzleTransform;  // 이펙트/사운드용 (선택)
+    [SerializeField] private CarryGripPoints paintGunGripPoints; // 그립 자세 지정용
 
     [Header("Settings")]
     [SerializeField] private float fireRange = 5;
@@ -17,10 +18,12 @@ public class MafiaPaintAction : NetworkBehaviour
     [Tooltip("브러시 반경 (표면 UV 기준, 0~1 사이 값)")]
     [SerializeField] private float brushRadius = 0.02f;
     [SerializeField] private LayerMask paintableLayers;
+    // ===== 외부 의존성 =====
     private PlayerInventory _inventory;
     private RoleManager _roleManager;
-    private PlayerActionGate _gate;
     private Camera _playerCamera;
+    private RagdollNetworkSync _ragdollSync;
+    private PlayerActionGate _gate;
 
     private float _nextFireTime;
     private bool _isFiring = false;     // 현재 마우스를 누르고 있는지 여부
@@ -30,6 +33,7 @@ public class MafiaPaintAction : NetworkBehaviour
         _roleManager = GetComponent<RoleManager>();
         _playerCamera = GetComponentInChildren<Camera>(true);
         _inventory = GetComponent<PlayerInventory>();
+        _ragdollSync = GetComponent<RagdollNetworkSync>();
         _gate = PlayerActionGate.GetOrAdd(gameObject);
 
         if (paintGunObject != null) paintGunObject.SetActive(false); // 처음엔 꺼둠
@@ -67,8 +71,15 @@ public class MafiaPaintAction : NetworkBehaviour
 
         if (paintGunObject != null)
         {
+            if (shouldShow)
+            {
+                AttachToHand(); // 켜기 전에 CarryAnchor로 재부모화
+            }
             paintGunObject.SetActive(shouldShow);
         }
+
+        // 서버 권위로 손 자세도 요청 (다른 아이템들과 동일한 패턴)
+        RequestCarryPose(shouldShow);
 
         // 총이 해제되었다면 쏘고 있던 입력 상태도 강제 초기화
         if (!shouldShow)
@@ -76,7 +87,39 @@ public class MafiaPaintAction : NetworkBehaviour
             _isFiring = false;
         }
     }
+    // 총을 손에 붙이기
+    private void AttachToHand()
+    {
+        if (paintGunObject == null) return;
 
+        if (_ragdollSync == null || _ragdollSync.Poser == null || _ragdollSync.Poser.CarryAnchor == null)
+        {
+            return; // 래그돌이 아직 준비 안 됐으면 이번엔 스킵
+        }
+
+        Transform carryAnchor = _ragdollSync.Poser.CarryAnchor;
+        paintGunObject.transform.SetParent(carryAnchor, false);
+        // paintGunObject.transform.localPosition = Vector3.zero;
+        // paintGunObject.transform.localRotation = Quaternion.identity;
+    }
+
+    private void RequestCarryPose(bool isCarrying)
+    {
+        // SetCarryRequested는 IsServerAuthoritative 인스턴스에서만 실제로 팔을 구동하므로
+        // 서버에서 직접 호출해도 안전함
+        if (_ragdollSync == null || _ragdollSync.Poser == null) return;
+
+        if (isCarrying)
+        {
+            _ragdollSync.Poser.SetCarryTarget(paintGunGripPoints);
+            _ragdollSync.Poser.SetCarryRequested(true);
+        }
+        else
+        {
+            _ragdollSync.Poser.SetCarryTarget(null);
+            _ragdollSync.Poser.SetCarryRequested(false);
+        }
+    }
     #region [총 꺼내기 / 집어넣기]
 
     public void OnSpawnPaintgun(InputAction.CallbackContext context)

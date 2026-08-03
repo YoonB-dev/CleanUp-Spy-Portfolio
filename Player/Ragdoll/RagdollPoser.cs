@@ -212,6 +212,7 @@ public class RagdollPoser : MonoBehaviour
     [Header("양손 들기 (Carry)")]
     [Tooltip("두 손 중간 지점 기준 CarryAnchor의 오프셋 (X:좌우, Y:위아래, Z:앞뒤)")]
     [SerializeField] private Vector3 _carryAnchorOffset = new Vector3(0f, 0.1f, 0.3f); // 예: 위로 0.1, 앞쪽으로 0.3
+    private Vector3 _activeCarryAnchorOffset; // 실제 프레임 계산에 사용되는 활성 오프셋
     [Tooltip("들기 중 팔 관절 스프링. 물건을 거의 즉각 따라가게 하려면 크게")]
     [SerializeField]
     private float _carrySpring = 9000f;
@@ -258,7 +259,7 @@ public class RagdollPoser : MonoBehaviour
     private void Awake()
     {
         _driver = GetComponent<RagdollDriver>();
-
+        _activeCarryAnchorOffset = _carryAnchorOffset; // 초기값은 기본 오프셋
         _leftHandTransform = FindBoneTransform(LEFT_HAND_BONE_NAME);
         _rightHandTransform = FindBoneTransform(RIGHT_HAND_BONE_NAME);
 
@@ -601,7 +602,7 @@ public class RagdollPoser : MonoBehaviour
         Quaternion anchorRotation = baseRotation * pitchRotation;
 
         // 회전값(anchorRotation)을 적용하여 '앞쪽/위쪽' 오프셋이 더해진 월드 좌표 계산
-        Vector3 finalPosition = midpoint + (anchorRotation * _carryAnchorOffset);
+        Vector3 finalPosition = midpoint + (anchorRotation * _activeCarryAnchorOffset);
 
         // 오프셋이 반영된 위치로 매 프레임 갱신
         _carryAnchor.SetPositionAndRotation(finalPosition, anchorRotation);
@@ -879,6 +880,24 @@ public class RagdollPoser : MonoBehaviour
     }
 
     #region  양손 잡기 관련
+
+    /// <summary>
+    /// 외부(PickupItem 등)에서 아이템별 CarryAnchor 오프셋을 지정할 때 호출.
+    /// 모든 클라이언트 로컬 인스턴스에서 각자 호출해야 함 (LateUpdate는 서버/클라 구분 없이 돌아가므로).
+    /// </summary>
+    public void SetCarryAnchorOffset(Vector3 offset)
+    {
+        _activeCarryAnchorOffset = offset;
+    }
+
+    /// <summary>
+    /// 아이템을 내려놓을 때 기본 오프셋으로 복원.
+    /// </summary>
+    public void ResetCarryAnchorOffset()
+    {
+        _activeCarryAnchorOffset = _carryAnchorOffset;
+    }
+    
     /// <summary>
     /// 외부(PickupItem 등)에서 양손 들기 자세를 요청/해제할 때 호출.
     /// 서버(권위) 인스턴스에서만 실제 팔 구동에 반영됨.

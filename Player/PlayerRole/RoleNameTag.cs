@@ -5,6 +5,7 @@ public class RoleNameTag : MonoBehaviour
 {
     [SerializeField] private TMP_Text roleText;
     [SerializeField] private RoleManager roleManager;
+    [SerializeField] private PlayerData playerData; // 변경
 
     private void Awake()
     {
@@ -12,41 +13,46 @@ public class RoleNameTag : MonoBehaviour
         {
             roleManager = GetComponentInParent<RoleManager>();
         }
+        if (playerData == null)
+        {
+            playerData = GetComponentInParent<PlayerData>();
+        }
     }
 
     private void OnEnable()
     {
-        if (roleManager == null)
+        if (roleManager != null)
         {
-            return;
+            roleManager.RoleChanged += HandleRoleChanged;
+        }
+        if (playerData != null)
+        {
+            playerData.SteamIdChanged += HandleSteamIdChanged;
         }
 
-        roleManager.RoleChanged += HandleRoleChanged;
-        HandleRoleChanged(roleManager.CurrentRole);
+        RefreshTag();
     }
 
     private void OnDisable()
     {
-        if (roleManager == null)
+        if (roleManager != null)
         {
-            return;
+            roleManager.RoleChanged -= HandleRoleChanged;
         }
-
-        roleManager.RoleChanged -= HandleRoleChanged;
+        if (playerData != null)
+        {
+            playerData.SteamIdChanged -= HandleSteamIdChanged;
+        }
     }
 
-    private void HandleRoleChanged(PlayerRole role)
-    {
-        if (roleText == null)
-        {
-            return;
-        }
+    private void HandleRoleChanged(PlayerRole role) => RefreshTag();
+    private void HandleSteamIdChanged(ulong steamId) => RefreshTag();
 
-        roleText.text = role switch
-        {
-            PlayerRole.Citizen => "Citizen",
-            PlayerRole.Mafia => "Mafia",
-            _ => "None"
-        };
+    private void RefreshTag()
+    {
+        if (roleText == null) return;
+
+        string displayName = playerData != null ? playerData.GetDisplayName() : string.Empty;
+        roleText.text = string.IsNullOrEmpty(displayName) ? "..." : displayName;
     }
 }

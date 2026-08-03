@@ -20,8 +20,8 @@ public class PlayerInteraction : NetworkBehaviour
 
     // ======== 아이템 던지기(강하게) 관련 변수 ========
     private float gaugeChargeTime = 1.5f; // 게이지가 최대치까지 충전되는 시간
-    private float minThrowForce = 4f; // 최소 던지기 힘 -> 0.3초에서 시작
-    private float maxThrowForce = 15f; // 최대 던지기 힘 -> 2초에서 최대
+    private float minThrowForce = 2f; // 최소 던지기 힘 -> 0.3초에서 시작
+    private float maxThrowForce = 10f; // 최대 던지기 힘 -> 2초에서 최대
     private float _dropKeyPressTime; // 키를 누르기 시작한 시간
     private bool _isChargingThrow = false;
     private float _currentThrowGauge = 0f; // 0 ~ 1 사이의 UI용 게이지 값
@@ -386,9 +386,9 @@ public class PlayerInteraction : NetworkBehaviour
         if (context.performed && !_gate.CanDo(PlayerAction.UseTool)) return;
         if (!IsHoldingItem()) return;
         var heldItem = GetCurrentHeldItem();
-        if (heldItem == null || !heldItem.TryGetComponent<ICameraTool>(out var cameraTool)) return;
-        if (context.performed) cameraTool.Aim(true);
-        else if (context.canceled) cameraTool.Aim(false);
+        if (heldItem == null || !heldItem.TryGetComponent<IZoomTool>(out var zoomToolTool)) return;
+        if (context.performed) zoomToolTool.Aim(true);
+        else if (context.canceled) zoomToolTool.Aim(false);
     }
 
     public void OnCapture(InputAction.CallbackContext context)

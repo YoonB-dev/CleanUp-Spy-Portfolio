@@ -143,7 +143,6 @@ public class RoomUIController : MonoBehaviour
     public void Refresh()
     {
         if (RoomSettings.Instance == null) return;
-        Debug.Log("RoomUIController.Refresh() 호출됨");
 
         playerCountText.text = $"{RoomSettings.Instance.PlayerCount.Value}";
         mafiaCountText.text = $"{RoomSettings.Instance.MafiaCount.Value}";
@@ -185,6 +184,7 @@ public class RoomUIController : MonoBehaviour
         }
 
         int total = RoomSettings.Instance.AllPlayers.Count;
+        int targetCount = RoomSettings.Instance.PlayerCount.Value; // 설정된 정원
         int readyCount = 0;
         bool localIsReady = false;
         ulong localClientId = NetworkManager.Singleton.LocalClientId;
@@ -213,13 +213,13 @@ public class RoomUIController : MonoBehaviour
 
         if (readyButtonText != null)
         {
-            readyButtonText.text = localIsReady ? "READY 취소" : "READY";
+            readyButtonText.text = localIsReady ? "READY Cancel" : "READY";
         }
 
         if (startGameButton != null && startGameButton.gameObject.activeSelf)
         {
-            startGameButtonText.text = $"GameStart ({readyCount}/{total})";
-            startGameButton.interactable = total > 0 && readyCount == total;
+            startGameButtonText.text = $"GameStart ({readyCount}/{targetCount})";
+            startGameButton.interactable = total == targetCount && readyCount == total;
         }
     }
 

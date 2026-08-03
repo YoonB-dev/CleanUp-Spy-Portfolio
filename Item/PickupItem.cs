@@ -16,8 +16,14 @@ public class PickupItem : NetworkBehaviour
     private Collider itemCollider;
     private PickupHighlight pickupHighlight;
     [Header("Carry Transform Settings")]
-    [SerializeField] private float carryDistance = 1f; public float CarryDistance => carryDistance;
+    // 던지기나 그런거에 사용되는 기본 위치
+    [SerializeField] private float carryDistance = 1f; public float CarryDistance => carryDistance; 
     [SerializeField] private float carryHeight = -0.3f; public float CarryHeight => carryHeight;
+    [Header("Carry Anchor Offset (손 앵커 위치 오프셋)")]
+    [Tooltip("체크하면 이 아이템을 들 때 RagdollPoser 기본 오프셋 대신 아래 값을 사용합니다.")]
+    [SerializeField] private bool overrideCarryAnchorOffset = false;
+    [Tooltip("CarryAnchor 기준 오프셋 (X:좌우, Y:위아래, Z:앞뒤)")]
+    [SerializeField] private Vector3 carryAnchorOffset = new Vector3(0f, 0.1f, 0.3f);
     private PlayerInteraction _holder;
     public PlayerInteraction Holder => _holder;
 
@@ -181,6 +187,11 @@ public class PickupItem : NetworkBehaviour
                 // 래그돌 관절 뼈 속으로 직접 자식을 넣는 대신 CarryAnchor를 타겟으로 지정
                 targetParent = ragdollPoser.CarryAnchor;
                 attachedToHand = true;
+                // 이 아이템 전용 오프셋이 있다면 적용
+                if (overrideCarryAnchorOffset)
+                {
+                    ragdollPoser.SetCarryAnchorOffset(carryAnchorOffset);
+                }
             }
             else if (holderNetObj.TryGetComponent<FirstPersonLook>(out var playerCamera) && playerCamera.PlayerCameraTransform != null)
             {
@@ -236,6 +247,12 @@ public class PickupItem : NetworkBehaviour
             targetWorldPos = throwerTransform.TransformPoint(new Vector3(0, carryHeight, carryDistance));
             targetWorldRot = throwerTransform.rotation;
             // 참고로 사람 손 앞으로 가는 이유는 동기화 지연 때문에 순간이동 하는 느낌이 들어서 그럼. networkobject를 비활성화 했기 때문임.ㅇㅇ
+
+            // 오프셋을 기본값으로 복원 (다음 아이템이 기본 오프셋을 쓸 수 있도록)
+            if (overrideCarryAnchorOffset && throwerNetObj.TryGetComponent<RagdollNetworkSync>(out var ragdollSync))
+            {
+                ragdollSync.Poser?.ResetCarryAnchorOffset();
+            }
         }
 
         // 2. 이제 안전하게 부모를 해제하고 스케일을 복원

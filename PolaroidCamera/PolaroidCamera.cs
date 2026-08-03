@@ -3,17 +3,6 @@ using Unity.Netcode;
 using UnityEngine;
 
 /// <summary>
-/// 조준(Aim) + 캡처(Capture) 가능한 도구가 구현하는 계약.
-/// 플레이어 쪽 holdItem 스크립트는 이 인터페이스만 알면 되고,
-/// PolaroidCamera 같은 구체 클래스 이름을 직접 알 필요가 없다.
-/// </summary>
-public interface ICameraTool
-{
-    void Aim(bool isAiming);
-    void Capture();
-}
-
-/// <summary>
 /// 폴라로이드 카메라 픽업 아이템에 부착하는 보조 컴포넌트.
 /// 위치/자세 관련 로직은 전혀 다루지 않는다 (그건 별도로 처리한다고 하셨으므로 제외).
 /// 이 스크립트가 하는 일은 딱 두 가지:
@@ -21,7 +10,8 @@ public interface ICameraTool
 ///   2) 캡처 시점의 화면을 찍어서 Photo 프리팹으로 스폰
 /// </summary>
 [RequireComponent(typeof(PickupItem))]
-public class PolaroidCamera : NetworkBehaviour, ICameraTool, IPickupListener
+[RequireComponent(typeof(ZoomableItem))]
+public class PolaroidCamera : NetworkBehaviour, ICaptureTool, IPickupListener
 {
     [Header("References")]
     [Tooltip("뷰파인더 화면에 실시간으로 그려주는 자식 카메라 (구멍 뒤 스크린용)")]
@@ -41,12 +31,6 @@ public class PolaroidCamera : NetworkBehaviour, ICameraTool, IPickupListener
     [Range(1, 100)]
     private int jpgQuality = 60;
     private float ejectForce = 1.5f;
-
-    // 카메라 에임 시 위치 조정
-    [SerializeField] private float carryDistanceAim = 1f;
-    [SerializeField] private float carryHeightAim = -0.1f;
-    [SerializeField] private float carryRightOffsetAim = 0.1f;
-
     private const int MAX_JPG_BYTE_SIZE = 512 * 1024;
 
     // PickupItem.cs를 건드리지 않기 위해, 서버가 Holder를 폴링해서 여기 미러링한다.
@@ -63,25 +47,12 @@ public class PolaroidCamera : NetworkBehaviour, ICameraTool, IPickupListener
         NetworkVariableWritePermission.Server
     );
 
-    private readonly NetworkVariable<bool> _isAiming = new NetworkVariable<bool>(
-        false,
-        NetworkVariableReadPermission.Everyone,
-        NetworkVariableWritePermission.Server // 수정은 서버만 가능
-    );
-
-    private bool _isReparented = false;
-
-    // 이제 변수가 아니라 NetworkVariable의 Value를 반환하도록 수정
-    public bool IsAiming => _isAiming.Value && _isEquipped.Value;
-
-
-    // 에임 시 로컬 하이어러키 위치
-    private Transform _originalParent;
     private PickupItem _pickupItem;
-
+    private ZoomableItem _zoomableItem;
     private void Awake()
     {
         _pickupItem = GetComponent<PickupItem>();
+        _zoomableItem = GetComponent<ZoomableItem>();
 
         if (viewfinderCamera != null)
         {
@@ -90,13 +61,13 @@ public class PolaroidCamera : NetworkBehaviour, ICameraTool, IPickupListener
         }
         _remainingPhotos.OnValueChanged += OnRemainingPhotosChanged;
         UpdateRemainingPhotosUI();
-        _isAiming.OnValueChanged += OnAimingChanged;
+
+        if (_zoomableItem != null) {_zoomableItem.OnAimingStateChanged += OnZoomAimingChanged; }
     }
 
     public override void OnNetworkDespawn()
     {
         _remainingPhotos.OnValueChanged -= OnRemainingPhotosChanged;
-        _isAiming.OnValueChanged -= OnAimingChanged;
     }
 
     private void Update()
@@ -113,6 +84,15 @@ public class PolaroidCamera : NetworkBehaviour, ICameraTool, IPickupListener
         }
     }
 
+    private void OnZoomAimingChanged(bool isAiming)
+    {
+        if (viewfinderCamera != null)
+        {
+            viewfinderCamera.enabled = isAiming;
+            if (!isAiming) ClearViewfinderTexture();
+        }
+    }
+
     // IPickupListener 구현 - PickupItem이 집히거나 내려놓을 때 호출됨
     public void OnPickedUp()
     {
@@ -121,58 +101,17 @@ public class PolaroidCamera : NetworkBehaviour, ICameraTool, IPickupListener
 
     public void OnDropped()
     {
-        if (IsOwner)
+        if (viewfinderCamera != null)
         {
-            DetachFromCameraAnchor();
+            viewfinderCamera.enabled = false;
+            ClearViewfinderTexture();
         }
-        if (!IsServer) return;
-
-        // Drop 시 조준 상태를 서버 권위로 강제 리셋.
-        // 이 한 줄만으로 모든 클라이언트의 _isAiming.OnValueChanged가 트리거되어
-        // 뷰파인더 카메라 off + 텍스처 클리어까지 자동으로 동기화됩니다.
-        if (_isAiming.Value)
-        {
-            _isAiming.Value = false;
-        }
-    }
-
-    private void DetachFromCameraAnchor()
-    {
-        // 조준 중(카메라 부모 상태)에 버려졌거나, 부모가 임시 변경된 상태일 때 복구
-        if (!_isReparented && transform.parent != _originalParent)
-        {
-            // 백업된 _originalParent가 존재한다면 복구
-            if (_originalParent != null)
-            {
-                transform.SetParent(_originalParent);
-            }
-        }
-
-        if (TryGetComponent(out Rigidbody rb))
-        {
-            // 내려놓은 상태이므로 kinematic 해제 및 물리 활성화
-            rb.isKinematic = !_pickupItem.Holder;
-        }
-        _isReparented = false;
-        _originalParent = null;
     }
     // ===== ICameraTool 구현 - holdItem이 든 아이템에서 이 인터페이스를 찾아 직접 호출 =====
 
-    public void Aim(bool isAiming)
-    {
-        if (!_isEquipped.Value) return;
-
-        SetAimingStateServerRpc(isAiming); // 여기서 위치는 건드리지 않음, 상태 요청만
-
-        if (viewfinderCamera != null)
-        {
-            viewfinderCamera.enabled = isAiming;
-            if (!isAiming) ClearViewfinderTexture();
-        }
-    }
     public void Capture()
     {
-        if (!IsOwner || !_isEquipped.Value || !_isAiming.Value) return;
+        if (!IsOwner || _zoomableItem == null || !_zoomableItem.IsAiming) return;
 
         if (_remainingPhotos.Value <= 0)
         {
@@ -260,81 +199,6 @@ public class PolaroidCamera : NetworkBehaviour, ICameraTool, IPickupListener
         photo.ApplyPhotoTextureClientRpc(jpgBytes);
     }
 
-    
-
-    [ServerRpc]
-    private void SetAimingStateServerRpc(bool isAiming)
-    {
-        // 서버에서 값을 변경하면, 전 세계 모든 클라이언트의 _isAiming.Value가 동기화됩니다.
-        _isAiming.Value = isAiming;
-    }
-    private void OnAimingChanged(bool previousValue, bool newValue)
-    {
-        if (viewfinderCamera != null)
-        {
-            viewfinderCamera.enabled = newValue;
-            if (!newValue) ClearViewfinderTexture();
-        }
-
-        // 1. 부모 전환 및 위치 적용
-        UpdateParentAndTransform(newValue);
-
-        // 2. 카메라 Near Clip Plane 조정
-        ApplyCameraClip(newValue);
-    }
-
-    private void UpdateParentAndTransform(bool isAiming)
-    {
-        if (_pickupItem == null || _pickupItem.Holder == null) return;
-
-        var holderNetObj = _pickupItem.Holder.NetworkObject;
-        if (holderNetObj == null) return;
-
-        if (isAiming)
-        {
-            // [조준 시] 부모를 1인칭 카메라로 변경하여 회전/이동을 즉시 완벽 추종
-            if (holderNetObj.TryGetComponent<FirstPersonLook>(out var playerCamera) &&
-                playerCamera.PlayerCameraTransform != null)
-            {
-                if (!_isReparented)
-                {
-                    _originalParent = transform.parent;
-                    _isReparented = true; // 부모 변경 플래그 켬
-                }
-
-                transform.SetParent(playerCamera.PlayerCameraTransform, false);
-                transform.localPosition = new Vector3(carryRightOffsetAim, carryHeightAim, carryDistanceAim);
-                transform.localRotation = Quaternion.identity;
-            }
-        }
-        else
-        {
-            // [조준 해제 시] 다시 래그돌 CarryAnchor 자식으로 되돌림
-            Transform targetParent = null;
-
-            if (holderNetObj.TryGetComponent<RagdollNetworkSync>(out var ragdollSync) &&
-                ragdollSync.Poser != null && ragdollSync.Poser.CarryAnchor != null)
-            {
-                targetParent = ragdollSync.Poser.CarryAnchor;
-            }
-            else if (holderNetObj.TryGetComponent<FirstPersonLook>(out var playerCam) &&
-                     playerCam.PlayerCameraTransform != null)
-            {
-                targetParent = playerCam.PlayerCameraTransform;
-            }
-
-            if (targetParent != null)
-            {
-                transform.SetParent(targetParent, false);
-                // 앵커 기준 (0,0,0) 위치 및 회전 강제 초기화
-                transform.localPosition = Vector3.zero;
-                transform.localRotation = Quaternion.identity;
-            }
-
-            _isReparented = false;
-        }
-    }
-
     private void UpdateRemainingPhotosUI()
     {
         if (remainingPhotosText != null)
@@ -347,18 +211,6 @@ public class PolaroidCamera : NetworkBehaviour, ICameraTool, IPickupListener
     {
         UpdateRemainingPhotosUI();
     }
-
-    private void ApplyCameraClip(bool isAiming)
-    {
-        if (NetworkManager.Singleton == null || NetworkManager.Singleton.LocalClient == null) return;
-
-        var localPlayerObj = NetworkManager.Singleton.LocalClient.PlayerObject;
-        if (localPlayerObj == null || !localPlayerObj.TryGetComponent<FirstPersonLook>(out var look)) return;
-
-        if (isAiming) look.SetClipNear();
-        else look.SetClipOrigin();
-    }
-
 
     /// <summary>
     /// 뷰파인더 RenderTexture를 검은 화면으로 초기화합니다.

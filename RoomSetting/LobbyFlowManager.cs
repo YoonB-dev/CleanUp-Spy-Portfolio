@@ -59,21 +59,26 @@ public class LobbyFlowManager : NetworkBehaviour
 
     public void TryStartGame()
     {
-        if (!NetworkManager.Singleton.IsHost) return;
+        // 임시로 비활성화
+        // if (!NetworkManager.Singleton.IsHost) return;
 
-        int total = RoomSettings.Instance.AllPlayers.Count;
-        int readyCount = 0;
+        // int total = RoomSettings.Instance.AllPlayers.Count;
+        // int targetCount = RoomSettings.Instance.PlayerCount.Value; // 설정된 정원
 
-        for (int i = 0; i < RoomSettings.Instance.AllPlayers.Count; i++)
-        {
-            if (RoomSettings.Instance.AllPlayers[i].IsReady)
-            {
-                readyCount++;
-            }
-        }
-        if (total == 0 || readyCount != total) return;
+        // if (total < targetCount) return;
 
-        Debug.Log("[LobbyFlowManager] 모든 인원 준비 완료. 인게임 씬으로 전환합니다.");
+        // int readyCount = 0;
+
+        // for (int i = 0; i < RoomSettings.Instance.AllPlayers.Count; i++)
+        // {
+        //     if (RoomSettings.Instance.AllPlayers[i].IsReady)
+        //     {
+        //         readyCount++;
+        //     }
+        // }
+        // if (total == 0 || readyCount != total) return;
+
+        // Debug.Log("[LobbyFlowManager] 모든 인원 준비 완료. 인게임 씬으로 전환합니다.");
         
         // 그 뒤에 다음 씬 로드 진행
         var status = NetworkManager.Singleton.SceneManager.LoadScene(playSceneName, UnityEngine.SceneManagement.LoadSceneMode.Single);
