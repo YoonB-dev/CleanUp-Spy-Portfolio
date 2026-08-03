@@ -16,6 +16,7 @@ public class PlayerDive : NetworkBehaviour
 
     private PlayerKnockdown _knockdown;
     private FirstPersonLook _fpLook;
+    private PlayerActionGate _gate;
     private bool _canDive = true;   // [서버]
     private Vector3 _originalCamLocalPos;
     private Quaternion _originalCamLocalRot;
@@ -24,6 +25,7 @@ public class PlayerDive : NetworkBehaviour
     {
         _knockdown = GetComponent<PlayerKnockdown>();
         _fpLook = GetComponent<FirstPersonLook>();
+        _gate = PlayerActionGate.GetOrAdd(gameObject);
 
         if (playerCameraPivot != null)
         {
@@ -34,7 +36,7 @@ public class PlayerDive : NetworkBehaviour
 
     public void OnDive(InputAction.CallbackContext context)
     {
-        if (!IsOwner || !context.started)
+        if (!IsOwner || !context.started || !_gate.CanDo(PlayerAction.Dive))
         {
             return;
         }
@@ -45,7 +47,7 @@ public class PlayerDive : NetworkBehaviour
     [ServerRpc]
     private void RequestDiveServerRpc()
     {
-        if (!_canDive || _knockdown == null || _knockdown.IsDown)
+        if (!_canDive || _knockdown == null || !_gate.CanDo(PlayerAction.Dive))
         {
             return;
         }

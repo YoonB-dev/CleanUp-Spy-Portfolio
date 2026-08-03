@@ -7,7 +7,10 @@ using UnityEngine;
 /// </summary>
 public class PlayerKnockdown : NetworkBehaviour
 {
-    private const float DOWN_DURATION = 1.8f;   // 쓰러진 뒤 일어나기까지
+    private const float GROUND_HOLD_TIME = 1.0f;    // 지면에 계속 닿아 있어야 일어나는 시간
+    private const float CONTACT_GAP = 0.1f;         // 구르며 잠깐 뜨는 건 끊긴 걸로 안 본다
+    private const float MAX_DOWN_DURATION = 5.0f;   // 접지가 영영 안 잡혀도(낙사 등) 이 시간이면 일어난다
+    private const float LANDING_GRACE = 0.1f;       // 다이빙은 발이 땅에 닿은 채 출발하므로 이 시간 안의 접촉은 무시
 
     // 쓰러짐 상태. 서버가 기록하고 Owner가 시점 조작을 막는 데 쓴다
     private readonly NetworkVariable<bool> _isDownNet = new(
@@ -18,7 +21,9 @@ public class PlayerKnockdown : NetworkBehaviour
     private RagdollDriver _driver;
     private FirstPersonLook _firstPersonLook;
     private PlayerInteraction _playerInteraction;
-    private float _getUpTime;   // [서버] 일어날 시각
+    private PlayerGrab _playerGrab;
+    private float _groundedSince;  // [서버] 연속 접지가 시작된 시각. 끊기면 무한대로 되돌린다
+    private float _downStartTime;  // [서버] 쓰러진 시각(상한 판정용)
 
     /// <summary>쓰러져 있는지</summary>
     public bool IsDown => _isDownNet.Value;
@@ -36,6 +41,7 @@ public class PlayerKnockdown : NetworkBehaviour
     {
         _firstPersonLook = GetComponent<FirstPersonLook>();
         _playerInteraction = GetComponent<PlayerInteraction>();
+        _playerGrab = GetComponent<PlayerGrab>();
     }
 
     public override void OnNetworkSpawn()
@@ -84,10 +90,11 @@ public class PlayerKnockdown : NetworkBehaviour
         _driver.ApplyKnockbackSpin(angularVelocity);
     }
 
-    // 다운 상태 진입. 이미 다운이면 기상 시각만 미룬다.
+    // 다운 상태 진입. 이미 다운이면 착지 판정부터 다시 시작한다.
     private void EnterDown(bool dropItem, bool diving)
     {
-        _getUpTime = Time.time + DOWN_DURATION;
+        _groundedSince = float.PositiveInfinity;
+        _downStartTime = Time.time;
 
         if (_isDownNet.Value)
         {
@@ -97,6 +104,12 @@ public class PlayerKnockdown : NetworkBehaviour
         _isDownNet.Value = true;
         _driver.SetLimp(true, diving);
 
+        // 쓰러지면서 잡고 있던 상대를 놓는다(다이빙도 몸을 던지기 전에 여기서 놓임)
+        if (_playerGrab != null)
+        {
+            _playerGrab.ServerReleaseGrab();
+        }
+
         if (dropItem && _playerInteraction != null)
         {
             _playerInteraction.ServerDropHeldItem();
@@ -105,7 +118,28 @@ public class PlayerKnockdown : NetworkBehaviour
 
     private void Update()
     {
-        if (!IsServer || !_isDownNet.Value || Time.time < _getUpTime)
+        if (!IsServer || !_isDownNet.Value)
+        {
+            return;
+        }
+
+        // 다이빙 출발 직후의 접촉은 빼고, 접지가 끊기지 않고 이어지는 동안만 시간을 센다
+        bool grounded = _driver != null
+            && _driver.LastContactTime > _downStartTime + LANDING_GRACE
+            && Time.time - _driver.LastContactTime <= CONTACT_GAP;
+
+        if (!grounded)
+        {
+            _groundedSince = float.PositiveInfinity;   // 다시 뜨면 처음부터
+        }
+        else if (_groundedSince > Time.time)
+        {
+            _groundedSince = Time.time;                // 접지 시작
+        }
+
+        bool heldLongEnough = Time.time - _groundedSince >= GROUND_HOLD_TIME;
+        bool timedOut = Time.time - _downStartTime >= MAX_DOWN_DURATION;
+        if (!heldLongEnough && !timedOut)
         {
             return;
         }

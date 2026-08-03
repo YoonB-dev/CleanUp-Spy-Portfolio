@@ -5,6 +5,7 @@ using UnityEngine.UI;
 public class LightInteraction : NetworkBehaviour
 {
     private RoleManager _roleManager;
+    private PlayerActionGate _gate;
     [SerializeField] private float interactDistance = 3f;
     [SerializeField] private Transform playerCameraTransform; // 서버에서 거리/시야 검증용 (플레이어 카메라 위치)
     [Header("UI Settings")]
@@ -22,6 +23,7 @@ public class LightInteraction : NetworkBehaviour
     private void Awake()
     {
         _roleManager = GetComponent<RoleManager>();
+        _gate = PlayerActionGate.GetOrAdd(gameObject);
         if (playerCameraTransform == null)
         {
             playerCameraTransform = GetComponentInChildren<Camera>(true)?.transform;
@@ -126,6 +128,9 @@ public class LightInteraction : NetworkBehaviour
 
         // 2. 물리적 거리 및 시야 1차 검증
         if (!ValidateInteraction(lightSwitch)) return;
+
+        // 상호 배타 규칙 서버 재검증(치트 방어)
+        if (!_gate.CanDo(PlayerAction.ToggleLight)) return;
 
         // 3. 상황별 역할(Role) 재검증
         if (lightSwitch.IsLightOn.Value)

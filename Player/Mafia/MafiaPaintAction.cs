@@ -19,6 +19,7 @@ public class MafiaPaintAction : NetworkBehaviour
     [SerializeField] private LayerMask paintableLayers;
     private PlayerInventory _inventory;
     private RoleManager _roleManager;
+    private PlayerActionGate _gate;
     private Camera _playerCamera;
 
     private float _nextFireTime;
@@ -29,6 +30,7 @@ public class MafiaPaintAction : NetworkBehaviour
         _roleManager = GetComponent<RoleManager>();
         _playerCamera = GetComponentInChildren<Camera>(true);
         _inventory = GetComponent<PlayerInventory>();
+        _gate = PlayerActionGate.GetOrAdd(gameObject);
 
         if (paintGunObject != null) paintGunObject.SetActive(false); // 처음엔 꺼둠
     }
@@ -61,7 +63,7 @@ public class MafiaPaintAction : NetworkBehaviour
     private void UpdatePaintGunVisual(int currentSlot)
     {
         // 마피아이고 슬롯이 4번일 때만 총이 보여야 함
-        bool shouldShow = (currentSlot == 4 && _roleManager != null && _roleManager.CurrentRole == PlayerRole.Mafia);
+        bool shouldShow = (currentSlot == PlayerActionGate.PAINT_GUN_SLOT && _roleManager != null && _roleManager.CurrentRole == PlayerRole.Mafia);
 
         if (paintGunObject != null)
         {
@@ -86,10 +88,10 @@ public class MafiaPaintAction : NetworkBehaviour
         if (_inventory != null)
         {
             // 현재 실제 인벤토리 슬롯이 4번(페인트총)인지 체크
-            bool isHoldingPaintGunNow = (_inventory.CurrentSlot == 4);
-            int targetSlot = isHoldingPaintGunNow ? 0 : 4;
+            bool isHoldingPaintGunNow = (_inventory.CurrentSlot == PlayerActionGate.PAINT_GUN_SLOT);
+            int targetSlot = isHoldingPaintGunNow ? 0 : PlayerActionGate.PAINT_GUN_SLOT;
 
-            // 인벤토리에 슬롯 변경을 요청 (이 요청이 서버를 거쳐 NetworkVariable을 바꿈)
+            // 인벤토리에 슬롯 변경을 요청 (꺼내기 제약은 ExecuteSlotChange의 게이트가 판정)
             _inventory.ExecuteSlotChange(targetSlot);
         }
     }
@@ -102,7 +104,7 @@ public class MafiaPaintAction : NetworkBehaviour
         if (!IsOwner) return;
 
         // 총을 꺼낸 상태일 때만 마우스 클릭 입력을 받음
-        if (_inventory == null || _inventory.CurrentSlot != 4)
+        if (_inventory == null || _inventory.CurrentSlot != PlayerActionGate.PAINT_GUN_SLOT)
         {
             _isFiring = false;
             return;
@@ -115,7 +117,8 @@ public class MafiaPaintAction : NetworkBehaviour
     private void Update()
     {
         // 내 오브젝트이고, 총을 꺼냈고, 마우스를 누르고 있는 3가지 조건이 다 맞을 때만 작동
-        if (!IsOwner || _inventory == null || _inventory.CurrentSlot != 4 || !_isFiring) return;
+        if (!IsOwner || _inventory == null || _inventory.CurrentSlot != PlayerActionGate.PAINT_GUN_SLOT || !_isFiring) return;
+        if (!_gate.CanDo(PlayerAction.FirePaint)) return;
         if (Time.time < _nextFireTime) return;
         _nextFireTime = Time.time + fireRate;
 
@@ -139,7 +142,10 @@ public class MafiaPaintAction : NetworkBehaviour
     [ServerRpc]
     private void RequestPaintServerRpc(int surfaceId, Vector2 uv, float radius)
     {
-        // TODO: 마피아 유저가 맞는지 여기서 최종 검증하면 보안상 아주 좋음
+        // 총을 꺼낸 마피아만 칠할 수 있음(치트 방어)
+        if (_roleManager == null || _roleManager.CurrentRole != PlayerRole.Mafia) return;
+        if (!_gate.CanDo(PlayerAction.FirePaint)) return;
+
         ApplyPaintClientRpc(surfaceId, uv, radius);
     }
 

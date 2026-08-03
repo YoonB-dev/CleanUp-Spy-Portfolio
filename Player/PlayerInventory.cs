@@ -14,10 +14,12 @@ public class PlayerInventory : NetworkBehaviour
     public int CurrentSlot => _currentSlot.Value;
     public static PlayerInventory LocalInstance { get; private set; }
     private RoleManager _roleManager;
+    private PlayerActionGate _gate;
     [SerializeField] private RagdollPoser _ragdollPoser; // 인스펙터에서 연결
     private void Awake()
     {
         _roleManager = GetComponent<RoleManager>();
+        _gate = PlayerActionGate.GetOrAdd(gameObject);
     }
     public override void OnNetworkSpawn()
     {
@@ -40,7 +42,7 @@ public class PlayerInventory : NetworkBehaviour
         TryBindUI();
     }
     private void TryBindUI()
-    {   
+    {
         if (IsLocalPlayer && InventoryUIController.Instance != null)
         {
             InventoryUIController.Instance.BindInventory(this);
@@ -66,7 +68,7 @@ public class PlayerInventory : NetworkBehaviour
     }
 
     #region Input System
-    public void OnSlot1Input(InputAction.CallbackContext context) 
+    public void OnSlot1Input(InputAction.CallbackContext context)
     {
         if (IsOwner && context.performed)
         {
@@ -112,6 +114,8 @@ public class PlayerInventory : NetworkBehaviour
     /// </summary>
     public void ExecuteSlotChange(int targetSlot)
     {
+        if (!_gate.CanDo(PlayerActionGate.SlotChangeAction(targetSlot))) return;
+
         // 호스트(서버 겸 클라이언트)라면 RPC를 거칠 필요 없이 서버 로직을 즉시 실행 가능합니다.
         if (IsServer)
         {
@@ -135,6 +139,9 @@ public class PlayerInventory : NetworkBehaviour
     private void ChangeSlotLocalLogical(int newSlotIndex)
     {
         if (!IsServer) return; // 서버 측에서만 네트워크 변수를 수정할 수 있도록 방어
+
+        // 상호 배타 규칙 서버 재검증(치트 방어)
+        if (!_gate.CanDo(PlayerActionGate.SlotChangeAction(newSlotIndex))) return;
 
         _currentSlot.Value = newSlotIndex; // 이 부분이 반드시 들어가야 슬롯이 바뀝니다!
         RefreshInventoryVisuals();

@@ -30,9 +30,10 @@ public class RagdollDriver : MonoBehaviour
     // hips가 앵커에서 이 거리 이상 벗어나면 되돌린다 (누적 드리프트 방지)
     private const float ANCHOR_LEASH_DISTANCE = 0.4f;
 
-    // 기상 시 hips 아래 지면을 찾는 레이 (몸 관통 방지용 시작 높이 + 최대 탐색 거리)
+    // hips 아래 지면을 찾는 레이 (몸 관통 방지용 시작 높이 + 최대 탐색 거리).
+    // 높은 곳에서 떨어지는 동안에도 지면을 찾아야 캡슐이 몸을 따라 내려간다. 짧으면 중간에 멈춘다
     private const float GROUND_RAY_START_HEIGHT = 0.6f;
-    private const float GROUND_RAY_DISTANCE = 5f;
+    private const float GROUND_RAY_DISTANCE = 200f;
 
     // 펀치를 감을 때는 타격 반대쪽으로 이만큼 틀어둔다 (허리 회전각 대비 비율)
     private const float PUNCH_WINDUP_YAW_RATIO = 0.45f;
@@ -119,6 +120,11 @@ public class RagdollDriver : MonoBehaviour
     private Transform _leftForearm;
     private Transform _rightForearm;
     private Rigidbody[] _boneBodies;
+
+    // 지면 탐색용 버퍼. 자기 뼈를 걸러내야 해서 다중 히트를 받는다
+    private readonly RaycastHit[] _groundHits = new RaycastHit[16];
+
+    private float _lastContactTime = float.NegativeInfinity;   // [서버] 뼈가 외부 물체에 마지막으로 닿은 시각
     private bool _wasMovementEnabled;
 
     /// <summary>
@@ -429,6 +435,7 @@ public class RagdollDriver : MonoBehaviour
         if (IsServerAuthoritative)
         {
             SetupAnchor();
+            SetupGroundContactReporters();
         }
         else
         {
@@ -851,10 +858,9 @@ public class RagdollDriver : MonoBehaviour
     }
 
     /// <summary>
-    /// Player 좌표계를 현재 래그돌 몸체 위치에 정렬. 캡슐은 항상 세워둔 채 수평만 따라간다. <br/>
-    /// 높이는 hips 아래 실제 지면을 레이캐스트로 찾아 맞춘다. 누운 hips 높이를 그대로 쓰면
-    /// 캡슐 아래 절반이 땅에 박히고, 다운 시작 높이로 고정하면 경사·계단·물체 위로 굴러간
-    /// 경우 기상 시 실제 래그돌과 어긋나 스냅된다.
+    /// Player 좌표계를 현재 래그돌 몸체 위치에 정렬. 캡슐은 항상 세워둔 채 몸을 따라간다. <br/>
+    /// 높이는 hips를 따라가되 hips 아래 실제 지면 위로 올려세운다. 누운 hips 높이를 그대로 쓰면
+    /// 캡슐 아래 절반이 땅에 박히고, 지면에만 붙여두면 날아가는 동안 캡슐이 뒤에 남는다.
     /// </summary>
     private void SyncPlayerToRagdoll()
     {
@@ -862,34 +868,74 @@ public class RagdollDriver : MonoBehaviour
         // 위치만 따라가고, 회전은 쓰러질 때 방향 그대로 유지한다.
         Vector3 position = _hips.position;
 
-        // 지면을 찾으면 그 위에 캡슐을 세우고, 못 찾으면(공중·낭떠러지) 직전 높이를 유지
+        // 지면 아래로만 안 내려가게 올려세우고, 그보다 높으면 몸 높이를 그대로 따라간다.
+        // 직전 높이를 유지하면 날아가는 동안 캡슐이 공중에 남아 기상 시 몸이 그리로 끌려 올라간다.
         if (TryGetGroundY(out float groundY))
         {
-            position.y = groundY + _playerMovement.StandingGroundOffset;
+            position.y = Mathf.Max(position.y, groundY + _playerMovement.StandingGroundOffset);
         }
         else
         {
+            // 지면을 못 찾으면 직전 높이 유지. 몸이 바닥을 파고든 순간 캡슐까지 끌고 내려가면 땅에 박힌다
             position.y = _playerTransform.position.y;
         }
 
         _playerTransform.position = position;
     }
 
-    // hips 바로 아래 지면 높이를 찾는다. 지면 레이어만 맞아 래그돌 자기 뼈는 무시한다
+    /// <summary>뼈가 외부 물체에 마지막으로 닿은 시각. 기상 타이밍(착지) 판정용.</summary>
+    public float LastContactTime => _lastContactTime;
+
+    /// <summary>뼈가 외부 물체에 닿았음을 기록. RagdollGroundContact가 호출한다.</summary>
+    public void ReportGroundContact()
+    {
+        _lastContactTime = Time.time;
+    }
+
+    // 뼈마다 접촉 리포터를 붙인다. 물리가 도는 서버에서만 의미가 있다
+    private void SetupGroundContactReporters()
+    {
+        foreach (Rigidbody body in _boneBodies)
+        {
+            // 가만히 누우면 뼈가 잠들면서 OnCollisionStay가 끊긴다.
+            // 그러면 접지가 풀린 것으로 오인해 기상 카운트가 영영 안 찬다
+            body.sleepThreshold = 0f;
+            body.gameObject.AddComponent<RagdollGroundContact>().Bind(this, _playerTransform);
+        }
+    }
+
+    /// <summary>
+    /// hips 바로 아래 지면 높이를 찾는다. 자기 래그돌 뼈와 Player 캡슐만 걸러내고 나머지는 전부 지면으로 본다. <br/>
+    /// 레이어 마스크에 기대지 않는 이유: 맵 바닥이 Ground로 세팅되지 않은 씬이 있어 마스크를 쓰면 지면을 영영 못 찾는다.
+    /// </summary>
     private bool TryGetGroundY(out float groundY)
     {
+        groundY = 0f;
         Vector3 origin = _hips.position + Vector3.up * GROUND_RAY_START_HEIGHT;
-        if (Physics.Raycast(
-                origin, Vector3.down, out RaycastHit hit,
-                GROUND_RAY_START_HEIGHT + GROUND_RAY_DISTANCE,
-                _playerMovement.GroundLayer, QueryTriggerInteraction.Ignore))
+        int count = Physics.RaycastNonAlloc(
+            origin, Vector3.down, _groundHits,
+            GROUND_RAY_START_HEIGHT + GROUND_RAY_DISTANCE,
+            Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+
+        // NonAlloc 결과는 정렬돼 있지 않으므로 가장 가까운(=가장 높은) 지면을 직접 고른다
+        float nearest = float.PositiveInfinity;
+        for (int i = 0; i < count; i++)
         {
-            groundY = hit.point.y;
-            return true;
+            Transform hit = _groundHits[i].transform;
+            if (hit.IsChildOf(transform)
+                || (_playerTransform != null && hit.IsChildOf(_playerTransform)))
+            {
+                continue;
+            }
+
+            if (_groundHits[i].distance < nearest)
+            {
+                nearest = _groundHits[i].distance;
+                groundY = _groundHits[i].point.y;
+            }
         }
 
-        groundY = 0f;
-        return false;
+        return nearest < float.PositiveInfinity;
     }
 
     /// <summary>

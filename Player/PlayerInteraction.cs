@@ -16,6 +16,7 @@ public class PlayerInteraction : NetworkBehaviour
     private PickupItem hoveredItem; // 플레이어가 현재 바라보고 있는 아이템
     // 두꺼비집 관련 컴포넌트
     private LightInteraction _lightInteraction;
+    private PlayerActionGate _gate;
 
     // ======== 아이템 던지기(강하게) 관련 변수 ========
     private float gaugeChargeTime = 1.5f; // 게이지가 최대치까지 충전되는 시간
@@ -41,6 +42,7 @@ public class PlayerInteraction : NetworkBehaviour
         _placementPreview = GetComponent<BoxPlacementPreview>();
         _lightInteraction = GetComponent<LightInteraction>();
         _inventory = GetComponent<PlayerInventory>();
+        _gate = PlayerActionGate.GetOrAdd(gameObject);
     }
 
     private void Update()
@@ -119,6 +121,8 @@ public class PlayerInteraction : NetworkBehaviour
         // 이미 아이템을 들고 있다면 줍기 스킵 (중복 방지)
         if (IsHoldingItem())
         {
+            if (!_gate.CanDo(PlayerAction.PlaceBox)) return;
+
             if (_placementPreview != null && _placementPreview.IsPreviewValid)
             {
                 // 프리뷰가 올바른 상태이므로 서버에 박스 배치 요청
@@ -131,6 +135,8 @@ public class PlayerInteraction : NetworkBehaviour
             }
             return; // 배치를 시도했으므로 아래 줍기 로직은 타지 않음
         }
+
+        if (!_gate.CanDo(PlayerAction.Pickup)) return;
 
         // 통합 탐색 함수 사용
         PickupItem targetItem = GetTargetPickupItem();
@@ -147,15 +153,10 @@ public class PlayerInteraction : NetworkBehaviour
     {
         if (!IsOwner) return;
 
-        if (_inventory != null && _inventory.CurrentSlot == 4)
-        {
-            return;
-        }
-
         // 손에 든 아이템이 있어야만 버릴 수 있음
         if (context.started)
         {
-            if (!IsHoldingItem()) return;
+            if (!_gate.CanDo(PlayerAction.DropItem)) return;
 
             _dropKeyPressTime = Time.time;
             _isChargingThrow = true;
@@ -185,6 +186,9 @@ public class PlayerInteraction : NetworkBehaviour
     [ServerRpc]
     public void TryPickupServerRpc(NetworkObjectReference pickupReference)
     {
+        // 상호 배타 규칙 서버 재검증(치트 방어). 마피아 쓰레기 생성은 별도 규칙이라 여기를 타지 않는다
+        if (!_gate.CanDo(PlayerAction.Pickup)) return;
+
         PickupLogicalServer(pickupReference);
     }
 
@@ -242,15 +246,15 @@ public class PlayerInteraction : NetworkBehaviour
 
         if (hoveredItem != null)
         {
-            // 1. 페인트 총(4번)을 들고 있을 때는 '백팩(1~3번)이 꽉 찼는지'가 기준이 된다.
-            if (_inventory != null && _inventory.CurrentSlot == 4)
+            // 1. 줍기 규칙(붙잡힘, 손 점유 등)은 게이트가 판정
+            if (!_gate.CanDo(PlayerAction.Pickup)) return;
+
+            // 2. 페인트 총(4번)을 들고 있을 때는 백팩(1~3번)에 자리가 있어야 함
+            if (_inventory != null
+                && _inventory.CurrentSlot == PlayerActionGate.PAINT_GUN_SLOT
+                && _inventory.IsBackpackFull())
             {
-                if (_inventory.IsBackpackFull()) return; // 꽉 찼으면 하이라이트 안 켬
-            }
-            // 2. 일반 슬롯(0~3번)일 때는 현재 손에 무언가 들고 있다면 하이라이트 안 켬
-            else
-            {
-                if (IsHoldingItem()) return;
+                return;
             }
 
             // 위의 줍기 불가 조건을 모두 통과했다면 하이라이트를 킨다.
@@ -287,6 +291,8 @@ public class PlayerInteraction : NetworkBehaviour
     [ServerRpc]
     private void TryPlaceBoxServerRpc(Vector3 requestedPosition)
     {
+        if (!_gate.CanDo(PlayerAction.PlaceBox)) return;
+
         PickupItem currentHeldItem = GetCurrentHeldItem();
         if (!IsHoldingItem() || currentHeldItem == null) return;
 
@@ -361,6 +367,8 @@ public class PlayerInteraction : NetworkBehaviour
     public void OnClean(InputAction.CallbackContext context)
     {
         if (!IsOwner) return;
+        // 끄는 입력은 항상 통과시켜야 상태가 켜진 채로 남지 않는다
+        if (context.performed && !_gate.CanDo(PlayerAction.UseTool)) return;
         if (!IsHoldingItem()) return;
         // '청소 도구'인지 확인
         var heldItem = GetCurrentHeldItem();
@@ -375,6 +383,7 @@ public class PlayerInteraction : NetworkBehaviour
     public void OnAim(InputAction.CallbackContext context)
     {
         if (!IsOwner) return;
+        if (context.performed && !_gate.CanDo(PlayerAction.UseTool)) return;
         if (!IsHoldingItem()) return;
         var heldItem = GetCurrentHeldItem();
         if (heldItem == null || !heldItem.TryGetComponent<ICameraTool>(out var cameraTool)) return;
@@ -386,7 +395,7 @@ public class PlayerInteraction : NetworkBehaviour
     {
         if (!IsOwner) return;
         if (!context.performed) return;
-        if (!IsHoldingItem()) return;
+        if (!_gate.CanDo(PlayerAction.UseTool)) return;
         var heldItem = GetCurrentHeldItem();
         if (heldItem == null || !heldItem.TryGetComponent<PolaroidCamera>(out var cameraTool)) return;
 
@@ -396,11 +405,11 @@ public class PlayerInteraction : NetworkBehaviour
     public void OnToggleLight(InputAction.CallbackContext context)
     {
         if (!IsOwner) return;
-        if (IsHoldingItem()) return;
         if (_lightInteraction == null) return;
 
         if (context.started)
         {
+            if (!_gate.CanDo(PlayerAction.ToggleLight)) return;
             if (playerCamera == null) return;
 
             // 앞에 스위치가 있는지 레이캐스트 검사만 수행
@@ -426,6 +435,7 @@ public class PlayerInteraction : NetworkBehaviour
     private void RequestDropOrThrowServerRpc(Vector3 direction, float holdDuration)
     {
         if (!IsServer) return;
+        if (!_gate.CanDo(PlayerAction.DropItem)) return;
 
         PickupItem currentHeldItem = GetCurrentHeldItem();
         if (currentHeldItem == null) return;

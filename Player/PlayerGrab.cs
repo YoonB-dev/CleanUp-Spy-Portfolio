@@ -44,6 +44,7 @@ public class PlayerGrab : NetworkBehaviour
     private Vector3 _holdOffset;            // [서버] 붙잡은 순간의 상대 위치(나 기준 오프셋). 내가 이동하면 오프셋을 유지하며 끌려옴.
 
     private PlayerMovement _playerMovement;
+    private PlayerActionGate _gate;
 
     // 붙잡기 충돌 무시 계산용 임시 버퍼
     private readonly List<Collider> _selfColliders = new();
@@ -87,6 +88,7 @@ public class PlayerGrab : NetworkBehaviour
         }
 
         _playerMovement = GetComponent<PlayerMovement>();
+        _gate = PlayerActionGate.GetOrAdd(gameObject);
     }
 
     public override void OnNetworkDespawn()
@@ -130,6 +132,11 @@ public class PlayerGrab : NetworkBehaviour
             return;
         }
 
+        if (_holdOffset.y > 0f)
+        {
+            _holdOffset.y = 0f;
+        }
+
         // 당겨오는 초반엔 아직 멀어서 오판하므로 유예
         if (Time.time - _grabStartTime < GRAB_SETTLE_TIME)
         {
@@ -150,6 +157,12 @@ public class PlayerGrab : NetworkBehaviour
     {
         if (!_grabHeld)
         {
+            return;
+        }
+
+        if (!IsGrabbing && !_gate.CanDo(PlayerAction.Grab))
+        {
+            SetGrabActive(false);
             return;
         }
 
@@ -217,6 +230,11 @@ public class PlayerGrab : NetworkBehaviour
 
     private void SetGrabActive(bool active)
     {
+        if (active && !_gate.CanDo(PlayerAction.Grab))
+        {
+            return;
+        }
+
         _grabHeld = active;
         if (active)
         {
@@ -300,6 +318,11 @@ public class PlayerGrab : NetworkBehaviour
     private void RequestGrabServerRpc(NetworkObjectReference targetRef)
     {
         if (_serverGrabTarget != null)
+        {
+            return;
+        }
+
+        if (!_gate.CanDo(PlayerAction.Grab))
         {
             return;
         }
@@ -390,7 +413,7 @@ public class PlayerGrab : NetworkBehaviour
     }
 
     /// <summary>붙잡은 대상을 놓고 상태 초기화. [서버 전용]</summary>
-    private void ServerReleaseGrab()
+    public void ServerReleaseGrab()
     {
         if (!IsServer)
         {

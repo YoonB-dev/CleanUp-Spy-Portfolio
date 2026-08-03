@@ -34,6 +34,7 @@ public class PlayerMovement : NetworkBehaviour
     private const float GRAB_VERTICAL_FOLLOW = 0.5f;       // 붙잡은 사람 높이 따라가는 비율(점프 시 위로 딸려옴)
     private const float GRAB_HOLD_MOVE_MULTIPLIER = 0.6f;  // 붙잡고 있을 때 이동속도 배율
     private PlayerGrab _playerGrab;
+    private PlayerActionGate _gate;
     private GameObject _ownedRagdoll;   // 월드 공간으로 분리된 액티브 래그돌 (Player 소유)
 
     private void Awake()
@@ -44,6 +45,7 @@ public class PlayerMovement : NetworkBehaviour
         }
 
         _playerGrab = GetComponent<PlayerGrab>();
+        _gate = PlayerActionGate.GetOrAdd(gameObject);
     }
 
     /// <summary>월드 공간 래그돌의 소유권 등록. Player 파괴 시 함께 정리된다.</summary>
@@ -149,11 +151,17 @@ public class PlayerMovement : NetworkBehaviour
         verticalVelocity += gravity * Time.deltaTime;
         float verticalOut = verticalVelocity;
 
-        // 붙잡은 사람이 위에 있을 때만(점프 등) 그 프레임 한정으로 따라 올라간다(누적 안 하므로 놓을 때 안 튐).
+        // 붙잡은 사람이 위에 있으면(점프, 공중에서 붙잡힘 등) 그쪽으로 딸려 올라간다.
         if (toHold.y > 0f)
         {
             float lift = Mathf.Min(toHold.y * GRAB_VERTICAL_FOLLOW / Time.deltaTime, GRAB_DRAG_SPEED);
-            verticalOut = Mathf.Max(verticalOut, lift);
+            if (lift > verticalOut)
+            {
+                // 매달려 있는 동안엔 낙하 속도를 쌓지 않는다. 쌓으면 1초쯤 뒤부터 리프트 상한
+                // (GRAB_DRAG_SPEED)을 넘겨 캡슐이 래그돌을 두고 떨어지고, 놓는 순간 그 속도로 땅에 박힌다.
+                verticalVelocity = 0f;
+                verticalOut = lift;
+            }
         }
 
         velocity = horizontalVelocity + Vector3.up * verticalOut;
@@ -179,7 +187,7 @@ public class PlayerMovement : NetworkBehaviour
             return;
         }
 
-        if (context.started)
+        if (context.started && _gate.CanDo(PlayerAction.Jump))
         {
             JumpServerRpc();
         }
@@ -194,7 +202,7 @@ public class PlayerMovement : NetworkBehaviour
     [ServerRpc]
     private void JumpServerRpc()
     {
-        if (characterController.isGrounded)
+        if (characterController.isGrounded && _gate.CanDo(PlayerAction.Jump))
         {
             verticalVelocity = Mathf.Sqrt(jumpForce * -2f * gravity);
             TriggerJumpAnimationClientRpc();

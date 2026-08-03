@@ -12,10 +12,12 @@ public class MafiaActionTrash : NetworkBehaviour
     private float _serverCoolTime = 0f; // 서버용 실제 쿨타임 타이머
     private RoleManager _roleManager;
     private PlayerInteraction _playerInteraction;
+    private PlayerActionGate _gate;
     [SerializeField] private Transform _playerCameraTransform;
     private void Awake() {
-        _roleManager = GetComponent<RoleManager>(); 
+        _roleManager = GetComponent<RoleManager>();
         _playerInteraction = GetComponent<PlayerInteraction>();
+        _gate = PlayerActionGate.GetOrAdd(gameObject);
     }
 
     private void Update()
@@ -36,6 +38,7 @@ public class MafiaActionTrash : NetworkBehaviour
     {
         if (!IsOwner || !context.started) return;
         if (_roleManager.CurrentRole != PlayerRole.Mafia) return;
+        if (!_gate.CanDo(PlayerAction.SpawnTrash)) return;
 
         // 로컬에서 1차적으로 쿨타임 중인지 확인해서 무분별한 RPC 연사를 방지.
         if (_currentCoolTime > 0) return;
@@ -48,6 +51,9 @@ public class MafiaActionTrash : NetworkBehaviour
     private void RequestSpawnTrashServerRpc(ServerRpcParams rpcParams = default)
     {
         if (_roleManager.CurrentRole != PlayerRole.Mafia || _serverCoolTime > 0 || _playerInteraction == null) return;
+
+        // 상호 배타 규칙 서버 재검증(치트 방어)
+        if (!_gate.CanDo(PlayerAction.SpawnTrash)) return;
 
         // --- 쓰레기 생성 흐름 ---
         Vector3 spawnPosition = _playerCameraTransform.position + (_playerCameraTransform.forward * 1.5f) + (Vector3.up * -0.3f);

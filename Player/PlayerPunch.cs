@@ -55,7 +55,7 @@ public class PlayerPunch : NetworkBehaviour
     private float _nextPunchRequestTime;                      // [Owner] 다음 연타 요청 시각
 
     private RagdollDriver _driver;
-    private PlayerKnockdown _knockdown;
+    private PlayerActionGate _gate;
     private readonly Collider[] _hitBuffer = new Collider[HIT_BUFFER_SIZE];
     // 물체 중복 타격 방지 (한 물체의 콜라이더 여러 개가 동시에 걸린다)
     private readonly HashSet<Component> _hitTargets = new HashSet<Component>();
@@ -81,7 +81,7 @@ public class PlayerPunch : NetworkBehaviour
 
     private void Awake()
     {
-        _knockdown = GetComponent<PlayerKnockdown>();
+        _gate = PlayerActionGate.GetOrAdd(gameObject);
     }
 
     /// <summary>
@@ -148,6 +148,12 @@ public class PlayerPunch : NetworkBehaviour
             return;
         }
 
+        // 홀드 중에도 매번 검사해 조건이 풀리는 순간 다시 나가게 한다
+        if (!_gate.CanDo(PlayerAction.Punch))
+        {
+            return;
+        }
+
         _nextPunchRequestTime = Time.time + PUNCH_INTERVAL;
 
         RequestPunchServerRpc();
@@ -167,8 +173,8 @@ public class PlayerPunch : NetworkBehaviour
             return;
         }
 
-        // 쓰러져 있는 동안엔 못 친다
-        if (_knockdown != null && _knockdown.IsDown)
+        // 쓰러짐/손 점유 등 상호 배타 규칙 서버 재검증(치트 방어)
+        if (!_gate.CanDo(PlayerAction.Punch))
         {
             return;
         }
