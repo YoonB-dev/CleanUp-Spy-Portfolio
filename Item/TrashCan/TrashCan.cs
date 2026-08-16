@@ -24,11 +24,32 @@ public class TrashCan : NetworkBehaviour
 
     private void ProcessItemDisposal(PickupItem item)
     {
-        
-        ScoreManager.Instance?.AddTrashScore();
+        if (item.TryGetComponent<TrashObject>(out TrashObject trashObj) && trashObj.Data != null)
+        {
+            TrashData data = trashObj.Data;
+
+            // 2. SO 데이터 기반 점수 추가
+            ScoreManager.Instance?.AddTrashScore(data.score);
+
+            // 3. 연출 처리 (서버 -> 모든 클라이언트 RPC 전파)
+            PlayDisposalFXClientRpc(item.transform.position, data.trashID);
+        }
+        else
+        {
+            // TrashData를 못 찾았을 때 예외 처리용 기본 점수
+            ScoreManager.Instance?.AddTrashScore(10);
+        }
+
+        // 4. 네트워크 오브젝트 디스폰
         if (item.NetworkObject != null && item.NetworkObject.IsSpawned)
         {
-            item.NetworkObject.Despawn(false);
+            item.NetworkObject.Despawn(true);
         }
+    }
+
+    [ClientRpc]
+    private void PlayDisposalFXClientRpc(Vector3 position, string trashID)
+    {
+        // 나중에 여기 사운드 넣을 꺼임. -> 쓰레기 처리하느 사운드
     }
 }

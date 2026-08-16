@@ -16,7 +16,7 @@ public class PaintCleaner : NetworkBehaviour
     [SerializeField] private LayerMask paintableLayers;
 
     private PickupItem _pickupItem;
-    private PlayerInteraction _currentHolder; // 현재 나를 들고 있는 주인
+    private PlayerInteraction _localPlayer; // 현재 나를 들고 있는 주인
     private Camera _playerCamera;
 
     private float _nextCleanTime;
@@ -32,41 +32,28 @@ public class PaintCleaner : NetworkBehaviour
         // 네트워크 스폰이 완벽히 완료되지 않았다면 업데이트를 수행하지 않습니다
         if (!IsSpawned) return;
 
-        if (IsOwner)
-        {
-            // 내가 이 아이템의 소유자라면, 내 로컬 플레이어 캐릭터 컴포넌트를 주인으로 설정!
-            if (_currentHolder == null && NetworkManager.Singleton != null && NetworkManager.Singleton.LocalClient != null)
-            {
-                var localPlayerObj = NetworkManager.Singleton.LocalClient.PlayerObject;
-                if (localPlayerObj != null)
-                {
-                    _currentHolder = localPlayerObj.GetComponent<PlayerInteraction>();
-                }
-            }
-        }
-        else if (IsServer)
-        {
-            // 서버(호스트) 시점에서는 PickupItem이 가지고 있는 _holder를 그대로 신뢰해도 됩니다.
-            _currentHolder = _pickupItem.Holder;
-        }
-        // 1. 현재 아무도 안 들고 있다면 청소 로직 완전 정지
-        if (_currentHolder == null)
+        // 1. 아무도 들고 있지 않으면 청소 로직 정지 (IsHeld는 PickupItem이 서버 권위로 관리)
+        if (!_pickupItem.IsHeld)
         {
             _isCleaning = false;
             return;
         }
-        
-        // 2. 나를 들고 있는 실소유주(IsOwner)의 화면에서만 마우스 입력 및 레이캐스트 연산 수행
+
+        // 2. 실소유주(오너)의 화면에서만 입력/레이캐스트 처리
         if (!IsOwner) return;
 
-        // 주인이 페인트 총을 들고 있다면(마피아라면) 청소기 작동 방지
-        if (_currentHolder.Inventory != null && _currentHolder.Inventory.CurrentSlot == 4)
+        // 3. 오너 = 곧 holder이므로, 로컬 플레이어를 그냥 나 자신으로 참조
+        if (_localPlayer == null && NetworkManager.Singleton != null && NetworkManager.Singleton.LocalClient != null)
         {
-            _isCleaning = false;
-            return;
+            var localPlayerObj = NetworkManager.Singleton.LocalClient.PlayerObject;
+            if (localPlayerObj != null)
+            {
+                _localPlayer = localPlayerObj.GetComponent<PlayerInteraction>();
+            }
         }
+        if (_localPlayer == null) return;
 
-        // 3. 청소기 작동 중일 때 주기적으로 발사
+        // 4. 청소
         if (!_isCleaning) return;
         if (Time.time < _nextCleanTime) return;
         _nextCleanTime = Time.time + cleanRate;
@@ -84,9 +71,9 @@ public class PaintCleaner : NetworkBehaviour
     private void CleanPaint()
     {
         // 캐싱이 안 되어있다면 주인의 카메라를 찾아옴
-        if (_playerCamera == null && _currentHolder != null)
+        if (_playerCamera == null && _localPlayer != null)
         {
-            _playerCamera = _currentHolder.GetComponentInChildren<Camera>(true);
+            _playerCamera = _localPlayer.GetComponentInChildren<Camera>(true);
         }
         if (_playerCamera == null) return;
         Ray ray = _playerCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
@@ -107,14 +94,13 @@ public class PaintCleaner : NetworkBehaviour
         if (!IsServer) return;
 
         // RPC를 보낸 클라이언트가 진짜 이 아이템을 들고 있는 주인인지 체크
-        if (_currentHolder == null || _currentHolder.OwnerClientId != rpcParams.Receive.SenderClientId)
+        var holder = _pickupItem.Holder;
+        if (holder == null || holder.OwnerClientId != rpcParams.Receive.SenderClientId)
         {
-            Debug.LogWarning($"[검증 거부] 아이템을 들고 있지 않은 클라이언트가 청소를 요청함.");
+            Debug.LogWarning("[검증 거부] 아이템을 들고 있지 않은 클라이언트가 청소를 요청함.");
             return;
         }
-
-        // 마피아 총 검증
-        if (_currentHolder.Inventory != null && _currentHolder.Inventory.CurrentSlot == 4) return;
+        if (holder.Inventory != null && holder.Inventory.CurrentSlot == 4) return;
 
         ApplyCleanClientRpc(surfaceId, uv, radius);
     }

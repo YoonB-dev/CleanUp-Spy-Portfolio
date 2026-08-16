@@ -27,8 +27,13 @@ public class PickupItem : NetworkBehaviour
     private PlayerInteraction _holder;
     public PlayerInteraction Holder => _holder;
 
-    // 외부(예: PolaroidCamera)에서 홀더가 들고 있는지 편하게 확인하기 위한 프로퍼티
-    public bool IsHeld => _holder != null;
+    // 들고있는 여부를 확인하기 위함
+    private readonly NetworkVariable<bool> _isHeldNetworked = new NetworkVariable<bool>(
+        false,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server
+    );
+    public bool IsHeld => _isHeldNetworked.Value;
 
     // 캐싱용 -> 오브젝트 비활성화 대신 렌더랑 캔버스를 끄는 방식으로 처리하기 위한 변수
     private MeshRenderer[] _renderers;
@@ -103,6 +108,7 @@ public class PickupItem : NetworkBehaviour
         }
         _pickupListener?.OnPickedUp();
         _holder = playerInteraction;
+        _isHeldNetworked.Value = true;
         SetHighlighted(false);
         NetworkObject.ChangeOwnership(playerInteraction.OwnerClientId);
 
@@ -305,6 +311,7 @@ public class PickupItem : NetworkBehaviour
     {
         _pickupListener?.OnDropped();
         _holder = null;
+        _isHeldNetworked.Value = false;
         NetworkObject.RemoveOwnership();
 
         //들기 자세 해제

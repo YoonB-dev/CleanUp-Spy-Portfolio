@@ -7,6 +7,8 @@ public class MafiaActionTrash : NetworkBehaviour
 {
     [Header("Mafia Trash Actoin Settings")]
     [SerializeField] private GameObject trashPrefab;
+    // 마피아가 생성할 쓰레기 목록 -> 여기에 SO등록
+    [SerializeField] private TrashData[] trashDatabase;
     private const float abilityCoolTime = 2f; // 마피아 능력 쿨타임
     private float _currentCoolTime = 0f;
     private float _serverCoolTime = 0f; // 서버용 실제 쿨타임 타이머
@@ -51,7 +53,11 @@ public class MafiaActionTrash : NetworkBehaviour
     private void RequestSpawnTrashServerRpc(ServerRpcParams rpcParams = default)
     {
         if (_roleManager.CurrentRole != PlayerRole.Mafia || _serverCoolTime > 0 || _playerInteraction == null) return;
-
+        if (trashDatabase == null || trashDatabase.Length == 0)
+        {
+            Debug.LogError("[MafiaActionTrash] trashDatabase가 설정되지 않았습니다!");
+            return;
+        }
         // 상호 배타 규칙 서버 재검증(치트 방어)
         if (!_gate.CanDo(PlayerAction.SpawnTrash)) return;
 
@@ -62,7 +68,14 @@ public class MafiaActionTrash : NetworkBehaviour
 
         if (trashNetObj != null)
         {
-            trashNetObj.Spawn(); // 네트워크 스폰
+            trashNetObj.Spawn(); // 1. 네트워크 스폰 -> 클라이언트들에게 전파함
+
+            // 2. 스폰 직후 서버 초기화 호출 (NetworkVariable 변경 전파)
+            if (trashMafia.TryGetComponent<TrashObject>(out var trashObject))
+            {
+                TrashData selectedData = trashDatabase[Random.Range(0, trashDatabase.Length)];
+                trashObject.ServerInitialize(selectedData);
+            }
 
             NetworkObjectReference netObjRef = new NetworkObjectReference(trashNetObj);
             _playerInteraction.PickupLogicalServer(netObjRef, true);

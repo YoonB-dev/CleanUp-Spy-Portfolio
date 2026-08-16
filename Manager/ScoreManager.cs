@@ -19,7 +19,6 @@ public class ScoreManager : NetworkBehaviour
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server
     );
-    private const int SCORE_TRASH_REWARD = 10;// 쓰레기통이 부여할 기본 점수
     // =====배치된 박스 점수=====
     private readonly NetworkVariable<int> _networkPlacedBoxScore = new(
         0,
@@ -111,13 +110,13 @@ public class ScoreManager : NetworkBehaviour
         }
     }
     /// 일반 쓰레기 점수
-    public void AddTrashScore()
+    public void AddTrashScore(int score = 10)
     {
         if (!IsServer)
         {
             return;
         }
-        _networkTrashScore.Value += SCORE_TRASH_REWARD;
+        _networkTrashScore.Value += score;
     }
 
     //상자가 배치되었을 때 점수를 누적

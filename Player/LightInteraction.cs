@@ -6,7 +6,7 @@ public class LightInteraction : NetworkBehaviour
 {
     private RoleManager _roleManager;
     private PlayerActionGate _gate;
-    [SerializeField] private float interactDistance = 3f;
+    [SerializeField] private float interactDistance = 5f;
     [SerializeField] private Transform playerCameraTransform; // 서버에서 거리/시야 검증용 (플레이어 카메라 위치)
     [Header("UI Settings")]
     [SerializeField] private Image interactionGaugeImage;
@@ -125,7 +125,6 @@ public class LightInteraction : NetworkBehaviour
         {
             return;
         }
-
         // 2. 물리적 거리 및 시야 1차 검증
         if (!ValidateInteraction(lightSwitch)) return;
 

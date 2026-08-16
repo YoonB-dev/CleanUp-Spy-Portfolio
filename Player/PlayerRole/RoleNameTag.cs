@@ -3,7 +3,7 @@ using UnityEngine;
 
 public class RoleNameTag : MonoBehaviour
 {
-    [SerializeField] private TMP_Text roleText;
+    [SerializeField] private TMP_Text _nameText;
     [SerializeField] private RoleManager roleManager;
     [SerializeField] private PlayerData playerData; // 변경
 
@@ -50,9 +50,9 @@ public class RoleNameTag : MonoBehaviour
 
     private void RefreshTag()
     {
-        if (roleText == null) return;
+        if (_nameText == null) return;
 
         string displayName = playerData != null ? playerData.GetDisplayName() : string.Empty;
-        roleText.text = string.IsNullOrEmpty(displayName) ? "..." : displayName;
+        _nameText.text = string.IsNullOrEmpty(displayName) ? "..." : displayName;
     }
 }

@@ -32,7 +32,7 @@ public class PlayerInteraction : NetworkBehaviour
     [SerializeField] private float maxThrowTorque = 8f;  // 풀차징으로 던졌을 때의 회전력
     
     public RagdollPoser playerRagDollPoser; // 인스펙터에서 연결
-
+    [SerializeField] private LayerMask interactLayerMask = ~0;
     private void Awake()
     {
         if (playerCamera == null)
@@ -413,11 +413,10 @@ public class PlayerInteraction : NetworkBehaviour
             if (playerCamera == null) return;
 
             // 앞에 스위치가 있는지 레이캐스트 검사만 수행
-            if (Physics.Raycast(playerCamera.transform.position, playerCamera.transform.forward, out RaycastHit hit, interactDistance))
+            if (Physics.Raycast(playerCamera.transform.position, playerCamera.transform.forward, out RaycastHit hit, interactDistance, interactLayerMask))
             {
                 if (hit.collider.TryGetComponent<LightSwitch>(out LightSwitch lightSwitch))
                 {
-                    // 구체적인 처리는 새 컴포넌트에게 전임!
                     _lightInteraction.StartLightInteraction(lightSwitch);
                 }
             }
