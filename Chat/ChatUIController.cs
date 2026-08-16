@@ -3,6 +3,7 @@ using TMPro;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
 
 /// <summary>
 /// 채팅 로그와 입력창. 전송은 ChatManager가 한다.
@@ -11,6 +12,7 @@ public class ChatUIController : SceneSingleton<ChatUIController>
 {
     [Header("UI")]
     [SerializeField] private CanvasGroup logGroup;
+    [SerializeField] private Graphic logBackground;
     [SerializeField] private TMP_Text logText;
     [SerializeField] private GameObject inputRoot;
     [SerializeField] private TMP_InputField inputField;
@@ -27,6 +29,7 @@ public class ChatUIController : SceneSingleton<ChatUIController>
 
     private readonly List<string> _lines = new();
 
+    private float _backgroundAlpha;
     private ChatChannel _channel = ChatChannel.All;
     private bool _isOpen;
     private int _openedFrame = -1;
@@ -34,6 +37,9 @@ public class ChatUIController : SceneSingleton<ChatUIController>
 
     private void Start()
     {
+        _backgroundAlpha = logBackground.color.a;
+        ShowBackground(false);
+
         logGroup.alpha = 0f;
         inputRoot.SetActive(false);
         UpdateChannelLabel();
@@ -102,6 +108,7 @@ public class ChatUIController : SceneSingleton<ChatUIController>
     {
         _isOpen = open;
         inputRoot.SetActive(open);
+        ShowBackground(open);
         inputField.text = string.Empty;
 
         if (open)
@@ -144,6 +151,14 @@ public class ChatUIController : SceneSingleton<ChatUIController>
         bool mafia = _channel == ChatChannel.Mafia;
         channelLabel.text = mafia ? "[마피아]" : "[전체]";
         channelLabel.color = mafia ? mafiaColor : allColor;
+    }
+
+    // 배경판은 채팅창을 연 동안만. 로그 글자는 알림처럼 잠깐 떴다 사라진다
+    private void ShowBackground(bool visible)
+    {
+        Color color = logBackground.color;
+        color.a = visible ? _backgroundAlpha : 0f;
+        logBackground.color = color;
     }
 
     private void ShowLog()
