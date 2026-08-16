@@ -176,6 +176,15 @@
                     "processors": "",
                     "interactions": "",
                     "initialStateCheck": false
+                },
+                {
+                    "name": "OpenChat",
+                    "type": "Button",
+                    "id": "f170743d-d15b-445f-a2b8-6d7208a1f62a",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
                 }
             ],
             "bindings": [
@@ -429,6 +438,17 @@
                     "processors": "",
                     "groups": "",
                     "action": "Punch",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "0887d8e1-e7ec-4efe-ba04-eed647213925",
+                    "path": "<Keyboard>/enter",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "OpenChat",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

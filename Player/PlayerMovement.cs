@@ -180,6 +180,18 @@ public class PlayerMovement : NetworkBehaviour
         SubmitMoveServerRpc(input);
     }
 
+    // 입력이 끊길 때 호출. 안 지우면 마지막 입력으로 계속 걸어간다
+    public void ClearMoveInput()
+    {
+        if (!IsOwner)
+        {
+            return;
+        }
+
+        _serverMoveInput = Vector2.zero;
+        SubmitMoveServerRpc(Vector2.zero);
+    }
+
     public void OnJump(InputAction.CallbackContext context)
     {
         if (!IsOwner)

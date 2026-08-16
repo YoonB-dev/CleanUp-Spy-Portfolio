@@ -19,6 +19,7 @@ public class FirstPersonLook : NetworkBehaviour
     public float Yaw => _yaw;
     private Vector2 _lookInput;
     private Vector3 _cameraBaseLocalPos;
+    private bool _lookSuspended;
 
     // 클리핑 확대, 축소용 2개
     private const float ORIGIN_CLIP = 0.3f; // 원래 세팅값 백업용
@@ -50,13 +51,22 @@ public class FirstPersonLook : NetworkBehaviour
 
     public void OnLook(InputAction.CallbackContext context)
     {
-        if (!IsOwner || !enabled) return;
+        if (!IsOwner || !enabled || _lookSuspended) return;
         _lookInput = context.ReadValue<Vector2>();
+    }
+
+    // UI가 키를 가져갈 때 호출. 남아 있던 입력으로 계속 돌지 않게 함께 비운다
+    public void SetLookSuspended(bool suspended)
+    {
+        if (!IsOwner) return;
+
+        _lookSuspended = suspended;
+        _lookInput = Vector2.zero;
     }
 
     private void LateUpdate()
     {
-        if (!IsOwner) return;
+        if (!IsOwner || _lookSuspended) return;
 
         float yawDelta = _lookInput.x * mouseSensitivity;
         float pitchDelta = _lookInput.y * mouseSensitivity;
