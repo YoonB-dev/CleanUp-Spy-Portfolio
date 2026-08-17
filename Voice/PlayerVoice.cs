@@ -66,13 +66,30 @@ public class PlayerVoice : NetworkBehaviour
         SteamUser.SampleRate = (uint)_sampleRate;
         _jitterSamples = Mathf.RoundToInt(_sampleRate * JITTER_SECONDS);
 
-        if (IsOwner) SetMode(mode);
-        else SetupAudio();   // 내 목소리는 내가 듣지 않는다
+        if (IsOwner)
+        {
+            SettingsManager.Instance.Changed += ApplySettings;
+            ApplySettings();
+        }
+        else
+        {
+            SetupAudio();   // 내 목소리는 내가 듣지 않는다
+        }
     }
 
     public override void OnNetworkDespawn()
     {
         if (IsOwner && SteamClient.IsValid) SteamUser.VoiceRecord = false;
+        if (IsOwner && SettingsManager.Existing != null) SettingsManager.Existing.Changed -= ApplySettings;
+    }
+
+    // 말하기 방식과 감지 감도는 설정에서 받아 쓴다
+    private void ApplySettings()
+    {
+        GameSettings settings = SettingsManager.Instance.Settings;
+
+        activationLevel = settings.voiceActivation;
+        SetMode(settings.voiceMode);
     }
 
     public void OnPushToTalk(InputAction.CallbackContext context)
@@ -120,6 +137,7 @@ public class PlayerVoice : NetworkBehaviour
         _clip = AudioClip.Create("Voice", _sampleRate, 1, _sampleRate, true, OnAudioRead);
 
         _source = gameObject.AddComponent<AudioSource>();
+        _source.outputAudioMixerGroup = SettingsManager.Instance.VoiceGroup;   // 음성 볼륨 설정이 여기에 걸린다
         _source.clip = _clip;
         _source.loop = true;
         _source.spatialBlend = 1f;

@@ -11,13 +11,12 @@ public class NetworkConnect : MonoBehaviour
     public static NetworkConnect Instance { get; private set; }
     public string RoomCode { get; private set; }
     [SerializeField] private Button hostButton;
-    [SerializeField] private Button clientButton;
+    [SerializeField] private Button clientButton;   // 접속은 JoinRoomModal이 시작한다. 여기서는 숨기고 되살리는 용도
     [SerializeField] private string lobbySceneName = "LobbyScene";
     [Min(0f)]
     public int MaxPlayers { get; set; } = 4;
     // Steam Relay 관련
     [SerializeField] private FacepunchTransport transport;
-    [SerializeField] private TMP_InputField roomCodeInputField;
 
     // 접속 실패 부분
     [SerializeField] private TMP_Text statusText;
@@ -28,6 +27,7 @@ public class NetworkConnect : MonoBehaviour
         // --- 싱글톤 및 DontDestroyOnLoad 설정 ---
         if (Instance != null && Instance != this)
         {
+            Instance.TakeOverUI(this);   // 살아남은 쪽이 파괴된 버튼을 붙들지 않게
             Destroy(gameObject);
             return;
         }
@@ -37,52 +37,72 @@ public class NetworkConnect : MonoBehaviour
         //서버로 동작할 때만 실제로 호출되므로 host/client 구분 없이 항상 등록해도 무방
         NetworkManager.Singleton.ConnectionApprovalCallback = ApprovalCheck;
 
-        // Host 버튼을 누르면 실행될 로직
-        hostButton.onClick.AddListener(() =>
-        {
-            bool isHostStarted = NetworkManager.Singleton.StartHost();
-            if (!isHostStarted)
-            {
-                StartCoroutine(ResetConnectionUI("Fail to start host. Please check your network settings."));
-                return;
-            }
-            RoomCode = SteamClient.SteamId.Value.ToString();
-
-            HideButtons();
-            Debug.Log("Host started. Room code: " + SteamClient.SteamId.Value);
-            NetworkManager.Singleton.SceneManager.LoadScene(lobbySceneName, UnityEngine.SceneManagement.LoadSceneMode.Single);
-        });
-
-        // Client 버튼을 누르면 실행될 로직
-        clientButton.onClick.AddListener(() =>
-        {
-            // 입력받은 코드를 targetSteamId로 파싱해서 세팅
-            if (!ulong.TryParse(roomCodeInputField.text, out ulong hostSteamId) || hostSteamId == 0)
-            {
-                StartCoroutine(ResetConnectionUI("잘못된 방 코드입니다."));
-                return;
-            }
-            transport.targetSteamId = hostSteamId;
-
-            bool isClientStarted = NetworkManager.Singleton.StartClient();
-            if (!isClientStarted)
-            {
-                StartCoroutine(ResetConnectionUI("Fail to start client. Please check your network settings."));
-                return;
-            }
-            HideButtons();
-            Debug.Log("Client started. Target: " + hostSteamId);
-        });
+        BindHostButton();
 
         // 클라이언트가 서버와 연결이 끊겼을 때 호출되는 콜백 등록
         NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnected;
     }
 
+    // 트랜스포트는 살아남은 것을 그대로 쓴다
+    private void TakeOverUI(NetworkConnect fresh)
+    {
+        hostButton = fresh.hostButton;
+        clientButton = fresh.clientButton;
+        statusText = fresh.statusText;
+
+        BindHostButton();
+    }
+
+    private void BindHostButton()
+    {
+        if (hostButton == null) return;
+
+        hostButton.onClick.RemoveListener(StartHosting);
+        hostButton.onClick.AddListener(StartHosting);
+    }
+
+    private void StartHosting()
+    {
+        if (!NetworkManager.Singleton.StartHost())
+        {
+            StartCoroutine(ResetConnectionUI(SettingsText.Translate("join_failed")));
+            return;
+        }
+
+        RoomCode = InviteCode.FromSteamId(SteamClient.SteamId.Value);
+        HideButtons();
+
+        Debug.Log("Host started. Room code: " + RoomCode);
+        NetworkManager.Singleton.SceneManager.LoadScene(lobbySceneName, UnityEngine.SceneManagement.LoadSceneMode.Single);
+    }
+
+    /// <summary>
+    /// 초대 코드로 접속을 시작한다. 코드 형식이 틀리면 아무것도 하지 않고 false를 준다.
+    /// 접속 자체가 실패하는 경우는 상태 텍스트로 알린다.
+    /// </summary>
+    public bool TryJoin(string roomCode)
+    {
+        if (!InviteCode.TryParse(roomCode, out ulong hostSteamId)) return false;
+
+        transport.targetSteamId = hostSteamId;
+
+        if (!NetworkManager.Singleton.StartClient())
+        {
+            StartCoroutine(ResetConnectionUI(SettingsText.Translate("join_failed")));
+            return true;
+        }
+
+        HideButtons();
+        Debug.Log("Client started. Target: " + hostSteamId);
+
+        return true;
+    }
+
     // 접속 성공 후 화면을 깔끔하게 하기 위해 UI를 숨기는 함수
     private void HideButtons()
     {
-        hostButton.gameObject.SetActive(false);
-        clientButton.gameObject.SetActive(false);
+        if (hostButton != null) hostButton.gameObject.SetActive(false);
+        if (clientButton != null) clientButton.gameObject.SetActive(false);
     }
 
     private void ApprovalCheck(NetworkManager.ConnectionApprovalRequest request, NetworkManager.ConnectionApprovalResponse response)
@@ -122,7 +142,7 @@ public class NetworkConnect : MonoBehaviour
 
         if (string.IsNullOrEmpty(rejectReason))
         {
-            rejectReason = "서버와의 연결이 끊어졌습니다.";
+            rejectReason = SettingsText.Translate("join_disconnected");
         }
 
         Debug.LogWarning($"[접속 실패] 사유: {rejectReason}");
@@ -146,12 +166,12 @@ public class NetworkConnect : MonoBehaviour
         NetworkManager.Singleton.Shutdown();
 
         // UI 버튼들 다시 활성화
-        hostButton.gameObject.SetActive(true);
-        clientButton.gameObject.SetActive(true);
+        if (hostButton != null) hostButton.gameObject.SetActive(true);
+        if (clientButton != null) clientButton.gameObject.SetActive(true);
 
         if (statusText != null)
         {
-            statusText.text = "원하는 모드를 선택하세요.";
+            statusText.text = SettingsText.Translate("main_status_idle");
         }
     }
 }

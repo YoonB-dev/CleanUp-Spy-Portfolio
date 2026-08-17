@@ -9,7 +9,6 @@ using Unity.Netcode.Components;
 public class PlayerMovement : NetworkBehaviour
 {
     private CharacterController characterController;
-    [SerializeField] private Animator animator;
     private float moveSpeed = 8f;
     private float jumpForce = 2f;
     private float gravity = -9.81f * 2f;
@@ -117,13 +116,6 @@ public class PlayerMovement : NetworkBehaviour
         }
 
         characterController.Move(velocity * Time.deltaTime);
-        if (animator != null)
-        {
-            // 입력 벡터의 크기를 계산 (정지: 0, 이동중: 1)
-            float inputSpeed = _serverMoveInput.magnitude;
-            // Animator의 'Speed' 파라미터에 값을 세팅, 서버 권한형이므로 서버가 이 값을 바꾸면 NetworkAnimator가 전 클라이언트에 동기화
-            SetAnimationSpeedClientRpc(inputSpeed);
-        }
     }
 
     /// <summary>붙잡혔으면 홀드 지점으로 끌려가는 속도(수평 드래그 + 수직 따라오기)를 낸다.</summary>
@@ -217,23 +209,6 @@ public class PlayerMovement : NetworkBehaviour
         if (characterController.isGrounded && _gate.CanDo(PlayerAction.Jump))
         {
             verticalVelocity = Mathf.Sqrt(jumpForce * -2f * gravity);
-            TriggerJumpAnimationClientRpc();
-        }
-    }
-    [ClientRpc]
-    private void SetAnimationSpeedClientRpc(float speed)
-    {
-        if (animator != null)
-        {
-            animator.SetFloat("Speed", speed);
-        }
-    }
-    [ClientRpc]
-    private void TriggerJumpAnimationClientRpc()
-    {
-        if (animator != null)
-        {
-            animator.SetTrigger("Jump");
         }
     }
 }

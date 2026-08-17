@@ -29,6 +29,8 @@ public class ChatUIController : SceneSingleton<ChatUIController>
 
     private readonly List<string> _lines = new();
 
+    public bool IsOpen => _isOpen;
+
     private float _backgroundAlpha;
     private ChatChannel _channel = ChatChannel.All;
     private bool _isOpen;
@@ -83,14 +85,20 @@ public class ChatUIController : SceneSingleton<ChatUIController>
         // 채팅을 연 프레임의 Enter를 전송으로 다시 먹지 않게
         if (keyboard == null || Time.frameCount == _openedFrame) return;
 
-        if (keyboard.escapeKey.wasPressedThisFrame) SetOpen(false);
-        else if (keyboard.tabKey.wasPressedThisFrame) ToggleChannel();
+        // ESC는 PauseMenuController가 받아서 Close를 부른다
+        if (keyboard.tabKey.wasPressedThisFrame) ToggleChannel();
         else if (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame) Submit();
     }
+
+    public void Close() => SetOpen(false);
 
     private void OnOpenChat(InputAction.CallbackContext context)
     {
         if (_isOpen) return;
+
+        // 채팅 열기는 PlayerInput을 거치지 않으므로 메뉴가 열려 있는지 직접 본다
+        PauseMenuController menu = PauseMenuController.Instance;
+        if (menu != null && menu.IsOpen) return;
 
         _openedFrame = Time.frameCount;
         SetOpen(true);
@@ -125,7 +133,7 @@ public class ChatUIController : SceneSingleton<ChatUIController>
             _hideTime = Time.unscaledTime + logHideDelay;
         }
 
-        SetPlayerInputEnabled(!open);
+        LocalPlayerInput.SetEnabled(!open);
     }
 
     private void ToggleChannel()
@@ -176,27 +184,10 @@ public class ChatUIController : SceneSingleton<ChatUIController>
     // 로비 캐릭터에는 RoleManager가 없다
     private static bool IsLocalMafia()
     {
-        NetworkObject player = LocalPlayer;
+        NetworkObject player = LocalPlayerInput.Local;
 
         return player != null
             && player.TryGetComponent(out RoleManager role)
             && role.CurrentRole == PlayerRole.Mafia;
     }
-
-    // 채팅 중에는 캐릭터 조작을 끊고, 남아 있던 이동과 시점 입력도 비운다
-    private static void SetPlayerInputEnabled(bool value)
-    {
-        NetworkObject player = LocalPlayer;
-        if (player == null) return;
-
-        PlayerInput input = player.GetComponent<PlayerInput>();
-        if (value) input.ActivateInput();
-        else input.DeactivateInput();
-
-        player.GetComponent<FirstPersonLook>().SetLookSuspended(!value);
-        if (!value) player.GetComponent<PlayerMovement>().ClearMoveInput();
-    }
-
-    private static NetworkObject LocalPlayer =>
-        NetworkManager.Singleton != null ? NetworkManager.Singleton.LocalClient?.PlayerObject : null;
 }

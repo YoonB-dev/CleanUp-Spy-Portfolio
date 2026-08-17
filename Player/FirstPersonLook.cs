@@ -7,7 +7,6 @@ public class FirstPersonLook : NetworkBehaviour
     [SerializeField] private Transform cameraPivot;
     [SerializeField] private Camera playerCamera;
     [SerializeField] private AudioListener audioListener;
-    [SerializeField] private float mouseSensitivity = 0.1f;
     [SerializeField] private float minPitch = -80f;
     [SerializeField] private float maxPitch = 80f;
     [SerializeField] private float cameraOrbitRadius = 0.2f;
@@ -20,6 +19,8 @@ public class FirstPersonLook : NetworkBehaviour
     private Vector2 _lookInput;
     private Vector3 _cameraBaseLocalPos;
     private bool _lookSuspended;
+    private float _sensitivity = 0.1f;
+    private float _pitchSign = 1f;   // Y축 반전이면 -1
 
     // 클리핑 확대, 축소용 2개
     private const float ORIGIN_CLIP = 0.3f; // 원래 세팅값 백업용
@@ -47,6 +48,25 @@ public class FirstPersonLook : NetworkBehaviour
         {
             _cameraBaseLocalPos = playerCamera.transform.localPosition;
         }
+
+        SettingsManager.Instance.Changed += ApplySettings;
+        ApplySettings();
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        if (SettingsManager.Existing != null) SettingsManager.Existing.Changed -= ApplySettings;
+    }
+
+    // 감도와 시야각은 설정에서 받아 쓴다. 인스펙터 값은 설정이 없을 때의 기본값
+    private void ApplySettings()
+    {
+        GameSettings settings = SettingsManager.Instance.Settings;
+
+        _sensitivity = settings.mouseSensitivity;
+        _pitchSign = settings.invertY ? -1f : 1f;
+
+        if (playerCamera != null) playerCamera.fieldOfView = settings.fieldOfView;
     }
 
     public void OnLook(InputAction.CallbackContext context)
@@ -68,8 +88,8 @@ public class FirstPersonLook : NetworkBehaviour
     {
         if (!IsOwner || _lookSuspended) return;
 
-        float yawDelta = _lookInput.x * mouseSensitivity;
-        float pitchDelta = _lookInput.y * mouseSensitivity;
+        float yawDelta = _lookInput.x * _sensitivity;
+        float pitchDelta = _lookInput.y * _sensitivity * _pitchSign;
 
         _yaw += yawDelta;
         _pitch -= pitchDelta;
