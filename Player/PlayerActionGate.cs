@@ -83,7 +83,7 @@ public class PlayerActionGate : MonoBehaviour
         [PlayerAction.Pickup] = new Rule(BUSY | Cond.HoldingItem),
         [PlayerAction.DropItem] = new Rule(BUSY | Cond.PaintGunOut, Cond.HoldingItem),
         [PlayerAction.ChangeSlot] = new Rule(BUSY),
-        [PlayerAction.ToggleGun] = new Rule(BUSY | Cond.HoldingItem),
+        [PlayerAction.ToggleGun] = new Rule(BUSY),
         [PlayerAction.PlaceBox] = new Rule(BUSY, Cond.HoldingItem),
         [PlayerAction.UseTool] = new Rule(BUSY, Cond.HoldingItem),
         [PlayerAction.FirePaint] = new Rule(BUSY, Cond.PaintGunOut),

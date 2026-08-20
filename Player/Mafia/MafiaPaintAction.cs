@@ -18,6 +18,26 @@ public class MafiaPaintAction : NetworkBehaviour
     [Tooltip("브러시 반경 (표면 UV 기준, 0~1 사이 값)")]
     [SerializeField] private float brushRadius = 0.02f;
     [SerializeField] private LayerMask paintableLayers;
+
+    [Header("Paint Gauge Settings")]
+    [Tooltip("1초 발사 시 소모되는 페인트 양 (1.0 = 100%)")]
+    [SerializeField] private float consumeRatePerSecond = 0.2f;
+    [Tooltip("1초 비발사 시 회복되는 페인트 양")]
+    [SerializeField] private float rechargeRatePerSecond = 0.1f;
+    [Tooltip("발사 중단 후 회복 시작까지의 대기 시간(초)")]
+    [SerializeField] private float rechargeDelay = 1.0f; // 재사용 딜레이
+    // 서버 측 패킷 연사 방지용 타임스탬프
+    private float _serverNextFireTime;
+    // ===== 네트워크 상태 변수 (0.0 ~ 1.0 범위) =====
+    private readonly NetworkVariable<float> _currentPaint = new(
+        1.0f,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server
+    );
+
+    /// <summary> UI 표현을 위한 외부 참조 프로퍼티 (0.0 ~ 1.0) </summary>
+    public float CurrentPaint => _currentPaint.Value;
+    public System.Action<float> OnPaintGaugeChanged; // UI 갱신용 이벤트
     // ===== 외부 의존성 =====
     private PlayerInventory _inventory;
     private RoleManager _roleManager;
@@ -27,6 +47,7 @@ public class MafiaPaintAction : NetworkBehaviour
 
     private float _nextFireTime;
     private bool _isFiring = false;     // 현재 마우스를 누르고 있는지 여부
+    private float _lastFireTime;        // 회복 딜레이 계산용 타임스탬프
 
     private void Awake()
     {
@@ -48,6 +69,22 @@ public class MafiaPaintAction : NetworkBehaviour
             // 방 중간 입장 유저나 초기 세팅을 위해 강제 한 번 실행
             UpdatePaintGunVisual(_inventory.CurrentSlot);
         }
+
+        _currentPaint.OnValueChanged += OnPaintValueChanged;
+
+        if (IsServer)
+        {
+            _currentPaint.Value = 1.0f; // 초기화 시 100% 충전
+        }
+
+        // 내가 로컬 플레이어이고 마피아라면 UI에 내 스크립트 바인딩
+        if (IsOwner && _roleManager != null && _roleManager.CurrentRole == PlayerRole.Mafia)
+        {
+            if (PaintGaugeUI.Instance != null)
+            {
+                PaintGaugeUI.Instance.Subscribe(this);
+            }
+        }
     }
 
     public override void OnNetworkDespawn()
@@ -56,14 +93,23 @@ public class MafiaPaintAction : NetworkBehaviour
         {
             _inventory.CurrentSlotNetworkVariable.OnValueChanged -= OnInventorySlotChanged;
         }
+
+        if (IsOwner)
+        {
+            if (PaintGaugeUI.Instance != null)
+            {
+                PaintGaugeUI.Instance.Unsubscribe();
+            }
+        }
     }
+    
 
     private void OnInventorySlotChanged(int previousValue, int newValue)
     {
         UpdatePaintGunVisual(newValue);
     }
 
-
+    #region [총 꺼내기 / 집어넣기]
     private void UpdatePaintGunVisual(int currentSlot)
     {
         // 마피아이고 슬롯이 4번일 때만 총이 보여야 함
@@ -120,7 +166,7 @@ public class MafiaPaintAction : NetworkBehaviour
             _ragdollSync.Poser.SetCarryRequested(false);
         }
     }
-    #region [총 꺼내기 / 집어넣기]
+    
 
     public void OnSpawnPaintgun(InputAction.CallbackContext context)
     {
@@ -140,7 +186,7 @@ public class MafiaPaintAction : NetworkBehaviour
     }
     #endregion
 
-    #region [페인트 발사 로직]
+    #region [페인트 발사 및 게이지 동기화 로직]
 
     public void OnFire(InputAction.CallbackContext context)
     {
@@ -149,16 +195,36 @@ public class MafiaPaintAction : NetworkBehaviour
         // 총을 꺼낸 상태일 때만 마우스 클릭 입력을 받음
         if (_inventory == null || _inventory.CurrentSlot != PlayerActionGate.PAINT_GUN_SLOT)
         {
+            SetFiringServerRpc(false);
             _isFiring = false;
             return;
         }
 
-        if (context.performed) _isFiring = true;
-        else if (context.canceled) _isFiring = false;
+        if (context.performed)
+        {
+            _isFiring = true;
+            SetFiringServerRpc(true);
+        }
+        else if (context.canceled)
+        {
+            _isFiring = false;
+            SetFiringServerRpc(false);
+        }
+    }
+    [ServerRpc]
+    private void SetFiringServerRpc(bool firing)
+    {
+        _isFiring = firing;
     }
 
     private void Update()
     {
+        // 1. [서버 권위] 페인트 게이지 충전 및 소모 계산
+        if (IsServer)
+        {
+            UpdatePaintServerLogic();
+        }
+
         // 내 오브젝트이고, 총을 꺼냈고, 마우스를 누르고 있는 3가지 조건이 다 맞을 때만 작동
         if (!IsOwner || _inventory == null || _inventory.CurrentSlot != PlayerActionGate.PAINT_GUN_SLOT || !_isFiring) return;
         if (!_gate.CanDo(PlayerAction.FirePaint)) return;
@@ -166,6 +232,27 @@ public class MafiaPaintAction : NetworkBehaviour
         _nextFireTime = Time.time + fireRate;
 
         ShootPaint();
+    }
+
+    /// <summary>
+    /// 서버에서 매 프레임 페인트 충전 및 소모 상태를 직접 계산
+    /// </summary>
+    private void UpdatePaintServerLogic()
+    {
+        if (_isFiring && _currentPaint.Value > 0f)
+        {
+            // 발사 중: 페인트 감소
+            _currentPaint.Value = Mathf.Max(0f, _currentPaint.Value - (consumeRatePerSecond * Time.deltaTime));
+            _lastFireTime = Time.time;
+        }
+        else if (!_isFiring && _currentPaint.Value < 1.0f)
+        {
+            // 발사 중지 후 대기시간(rechargeDelay)이 지나면 자동 회복
+            if (Time.time >= _lastFireTime + rechargeDelay)
+            {
+                _currentPaint.Value = Mathf.Min(1.0f, _currentPaint.Value + (rechargeRatePerSecond * Time.deltaTime));
+            }
+        }
     }
 
     private void ShootPaint()
@@ -188,7 +275,16 @@ public class MafiaPaintAction : NetworkBehaviour
         // 총을 꺼낸 마피아만 칠할 수 있음(치트 방어)
         if (_roleManager == null || _roleManager.CurrentRole != PlayerRole.Mafia) return;
         if (!_gate.CanDo(PlayerAction.FirePaint)) return;
+        if (_currentPaint.Value <= 0f) return;
 
+        // 3. [보안 검증] 서버 측 발사 빈도(Cooltime) 검증 (클라이언트 연사 연동 방어)
+        if (Time.time < _serverNextFireTime) return;
+        _serverNextFireTime = Time.time + fireRate;
+
+        // 4. [보안 검증] 현재 슬롯 및 발사 상태(SetFiringServerRpc) 재확인
+        if (_inventory == null || _inventory.CurrentSlot != PlayerActionGate.PAINT_GUN_SLOT || !_isFiring) return;
+
+        // 모든 검증 통과 시 클라이언트에 그리기 전파
         ApplyPaintClientRpc(surfaceId, uv, radius);
     }
 
@@ -198,11 +294,20 @@ public class MafiaPaintAction : NetworkBehaviour
         PaintSurfaceManager.Instance.DrawAt(surfaceId, uv, radius, isPaint: true);
     }
 
+    private void OnPaintValueChanged(float previousValue, float newValue)
+    {
+        // 내 로컬 UI 갱신용 이벤트 호출
+        OnPaintGaugeChanged?.Invoke(newValue);
+    }
+
     #endregion
 
     private void OnDisable()
     {
-        // 스크립트가 꺼지거나 플레이어가 사망/종료 시 상태 리셋
         _isFiring = false;
+        if (IsOwner)
+        {
+            SetFiringServerRpc(false);
+        }
     }
 }

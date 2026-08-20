@@ -8,24 +8,33 @@ using UnityEngine;
 public class ScoreManager : NetworkBehaviour
 {
     public static ScoreManager Instance { get; private set; }
-    [SerializeField] private TextMeshProUGUI totalScoreText;
-    [SerializeField] private TextMeshProUGUI trashScoreText;
-    [SerializeField] private TextMeshProUGUI boxScoreText;
-    [SerializeField] private TextMeshProUGUI paintScoreText;
-    public int CurrentTotalScore => _networkTrashScore.Value + _networkPlacedBoxScore.Value;
-    // =====쓰레기 버리기 점수=====
-    private readonly NetworkVariable<int> _networkTrashScore = new (
+    [Header("Gauge UI Reference")]
+    [SerializeField] private UIPropertyGauge propertyGauge;
+
+    // =====전체 쓰레기 점수 (네트워크 동기화 필요 시 사용)=====
+    private readonly NetworkVariable<int> _networkTotalTrashScore = new(
+        50,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server
+    );
+    // =====쓰레기 버리기 점수 (청소해서 제거한 점수)=====
+    private readonly NetworkVariable<int> _networkCleanedTrashScore = new (
         0,
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server
     );
-    // =====배치된 박스 점수=====
-    private readonly NetworkVariable<int> _networkPlacedBoxScore = new(
+    // =====전체 배치 가능한 상자 개수 (네트워크 동기화 필요 시 사용)=====
+    private readonly NetworkVariable<int> _networkTotalBoxCount = new(
+        10,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server
+    );
+    // =====배치된 박스 개수=====
+    private readonly NetworkVariable<int> _networkPlacedBoxCount = new(
         0,
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server
     );
-    private const int SCORE_BOX_REWARD = 10;// 배치된 박스가 부여할 기본 점수
 
     // =====페인트 점수=====
     private readonly NetworkVariable<float> _contaminationLevel = new(
@@ -33,10 +42,6 @@ public class ScoreManager : NetworkBehaviour
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server
     );
-    public float ContaminationLevel => _contaminationLevel.Value;
-    private const float SCORE_PAINT = 0.5f; // 배치된 박스가 부여할 기본 점수
-    private const float SCORE_CLEAR_PAINT = 0.5f; 
-
 
     private void Awake()
     {
@@ -50,35 +55,32 @@ public class ScoreManager : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
-        _networkTrashScore.OnValueChanged += OnScoreChanged;
-        _networkPlacedBoxScore.OnValueChanged += OnScoreChanged;
+        _networkTotalTrashScore.OnValueChanged += OnScoreChanged;
+        _networkCleanedTrashScore.OnValueChanged += OnScoreChanged;
+        _networkTotalBoxCount.OnValueChanged += OnScoreChanged;
+        _networkPlacedBoxCount.OnValueChanged += OnScoreChanged;
         _contaminationLevel.OnValueChanged += OnContaminationChanged;
+
+        if (IsServer)
+        {
+            // _networkTotalBoxCount.Value = defaultTotalBoxCount;
+            // _networkTotalTrashScore.Value = defaultTotalTrashScore;
+        }
+
+        UpdateScoreUI();
     }
 
     public override void OnNetworkDespawn()
     {
-        _networkTrashScore.OnValueChanged -= OnScoreChanged;
-        _networkPlacedBoxScore.OnValueChanged -= OnScoreChanged;
+        _networkTotalTrashScore.OnValueChanged -= OnScoreChanged;
+        _networkCleanedTrashScore.OnValueChanged -= OnScoreChanged;
+        _networkTotalBoxCount.OnValueChanged -= OnScoreChanged;
+        _networkPlacedBoxCount.OnValueChanged -= OnScoreChanged;
         _contaminationLevel.OnValueChanged -= OnContaminationChanged;
     }
     public void InitScoreText()
     {
-        if (totalScoreText != null)
-        {
-            totalScoreText.text = $"Total: {CurrentTotalScore}";
-        }
-        if (trashScoreText != null)
-        {
-            trashScoreText.text = $"Trash: {_networkTrashScore.Value}";
-        }
-        if (boxScoreText != null)
-        {
-            boxScoreText.text = $"Box: {_networkPlacedBoxScore.Value}";
-        } 
-        if (paintScoreText != null)
-        {
-            paintScoreText.text = $"Paint: {_contaminationLevel.Value}";
-        }
+        UpdateScoreUI();
     }
 
     // 값이 변경되면 모든 클라이언트에서 이 함수가 실행됨
@@ -92,31 +94,52 @@ public class ScoreManager : NetworkBehaviour
     }
     private void UpdateScoreUI()
     {
-        if (totalScoreText != null)
+        if (propertyGauge != null)
         {
-            totalScoreText.text = $"Total: {CurrentTotalScore}";
-        }
-        if (trashScoreText != null)
-        {
-            trashScoreText.text = $"Trash: {_networkTrashScore.Value}";
-        }
-        if (boxScoreText != null)
-        {
-            boxScoreText.text = $"Box: {_networkPlacedBoxScore.Value}";
-        }
-        if (paintScoreText != null)
-        {
-            paintScoreText.text = $"Paint: {_contaminationLevel.Value}";
+            // 1. 미배치 박스 수 = (전체 배치 가능 수 - 현재 배치된 수)
+            int unplacedBoxCount = Mathf.Max(0, _networkTotalBoxCount.Value - _networkPlacedBoxCount.Value);
+
+            // 2. 남은 쓰레기 점수 = (전체 쓰레기 총점 - 청소한 쓰레기 점수)
+            float remainingTrashScore = Mathf.Max(0, _networkTotalTrashScore.Value - _networkCleanedTrashScore.Value);
+
+            propertyGauge.CalculateGaugeValues(
+                remainingTrashScore,
+                unplacedBoxCount,
+                _contaminationLevel.Value
+            );
         }
     }
-    /// 일반 쓰레기 점수
+    /// <summary>
+    /// 맵 초기화 시 씬에 존재하는 전체 쓰레기 점수 및 배치 가능한 상자 개수를 설정
+    /// </summary>
+    public void SetTotalTrashScore(int totalScore)
+    {
+        if (!IsServer) return;
+        _networkTotalTrashScore.Value = totalScore;
+    }
+    public void SetTotalBoxCount(int count)
+    {
+        if (!IsServer) return;
+        _networkTotalBoxCount.Value = count;
+    }
+    /// <summary>
+    /// 마피아 능력 등으로 새로운 쓰레기가 생성되었을 때 전체 쓰레기 점수를 누적 (서버 전용)
+    /// </summary>
+    public void AddTotalTrashScore(int score)
+    {
+        if (!IsServer) return;
+        _networkTotalTrashScore.Value += score;
+    }
+    /// <summary>
+    /// 쓰레기를 치웠을 때 청소 점수 누적
+    /// </summary>
     public void AddTrashScore(int score = 10)
     {
         if (!IsServer)
         {
             return;
         }
-        _networkTrashScore.Value += score;
+        _networkCleanedTrashScore.Value += score;
     }
 
     //상자가 배치되었을 때 점수를 누적
@@ -126,7 +149,7 @@ public class ScoreManager : NetworkBehaviour
         {
             return;
         }
-        _networkPlacedBoxScore.Value += SCORE_BOX_REWARD;
+        _networkPlacedBoxCount.Value ++;
     }
 
     //상자가 무너지거나 다시 주워졌을 때 점수를 차감
@@ -138,13 +161,13 @@ public class ScoreManager : NetworkBehaviour
         }
 
         // 점수가 음수로 내려가는 예외 방어
-        if (_networkPlacedBoxScore.Value >= SCORE_BOX_REWARD)
+        if (_networkPlacedBoxCount.Value >= 1)
         {
-            _networkPlacedBoxScore.Value -= SCORE_BOX_REWARD;
+            _networkPlacedBoxCount.Value --;
         }
         else
         {
-            _networkPlacedBoxScore.Value = 0;
+            _networkPlacedBoxCount.Value = 0;
         }
     }
 
@@ -171,6 +194,6 @@ public class ScoreManager : NetworkBehaviour
         float averageContamination = sumPercent / count;
         // 소수점 2자리로 반올림해서 동기화 (불필요한 NetworkVariable 갱신도 줄어듦)
         averageContamination = Mathf.Round(averageContamination * 100f) / 100f;
-        _contaminationLevel.Value = Mathf.Clamp(averageContamination, 0f, 100f);
+        _contaminationLevel.Value = Mathf.Clamp(averageContamination, 0f, 100f) * 100; // 페인트의 점수를 확산
     }
 }

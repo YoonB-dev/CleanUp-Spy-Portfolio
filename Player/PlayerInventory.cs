@@ -16,10 +16,12 @@ public class PlayerInventory : NetworkBehaviour
     private RoleManager _roleManager;
     private PlayerActionGate _gate;
     [SerializeField] private RagdollPoser _ragdollPoser; // 인스펙터에서 연결
+    private PlayerInteraction _interaction;
     private void Awake()
     {
         _roleManager = GetComponent<RoleManager>();
         _gate = PlayerActionGate.GetOrAdd(gameObject);
+        _interaction = GetComponent<PlayerInteraction>();
     }
     public override void OnNetworkSpawn()
     {
@@ -114,6 +116,12 @@ public class PlayerInventory : NetworkBehaviour
     /// </summary>
     public void ExecuteSlotChange(int targetSlot)
     {
+        // 슬롯 교체 시 작동 중인 자석 상태 강제 정지
+        if (IsOwner && _interaction != null)
+        {
+            _interaction.StopActiveMagnet();
+        }
+
         if (!_gate.CanDo(PlayerActionGate.SlotChangeAction(targetSlot))) return;
 
         // 호스트(서버 겸 클라이언트)라면 RPC를 거칠 필요 없이 서버 로직을 즉시 실행 가능합니다.

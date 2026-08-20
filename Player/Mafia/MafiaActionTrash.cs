@@ -69,11 +69,11 @@ public class MafiaActionTrash : NetworkBehaviour
         if (trashNetObj != null)
         {
             trashNetObj.Spawn(); // 1. 네트워크 스폰 -> 클라이언트들에게 전파함
-
+            TrashData selectedData = null;
             // 2. 스폰 직후 서버 초기화 호출 (NetworkVariable 변경 전파)
             if (trashMafia.TryGetComponent<TrashObject>(out var trashObject))
             {
-                TrashData selectedData = trashDatabase[Random.Range(0, trashDatabase.Length)];
+                selectedData = trashDatabase[Random.Range(0, trashDatabase.Length)];
                 trashObject.ServerInitialize(selectedData);
             }
 
@@ -84,6 +84,14 @@ public class MafiaActionTrash : NetworkBehaviour
             {
                 _serverCoolTime = abilityCoolTime;
                 StartLocalCooldownClientRpc(abilityCoolTime);
+
+                // =========================================================
+                // 새로 생성된 쓰레기 점수만큼 전체 쓰레기 점수 가산
+                // =========================================================
+                if (selectedData != null && ScoreManager.Instance != null)
+                {
+                    ScoreManager.Instance.AddTotalTrashScore(selectedData.score);
+                }
             }
             else
             {

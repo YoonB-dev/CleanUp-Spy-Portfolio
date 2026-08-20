@@ -3,6 +3,7 @@ using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using UnityEngine.Localization;
 
 public class RoomUIController : MonoBehaviour
 {
@@ -38,6 +39,12 @@ public class RoomUIController : MonoBehaviour
     [SerializeField] private GameObject playerEntryPrefab; // 참여자 리스트 항목 프리팹
     [Header("방 ID")]
     [SerializeField] private TMP_Text steamRoomIDText;
+
+    [Header("Localization 목록")]
+    [SerializeField] private LocalizedString readyButtonLocalizedString;
+    [SerializeField] private LocalizedString readyCancelButtonLocalizedString;
+    [SerializeField] private LocalizedString startGameButtonLocalizedString;
+
 
     private void Awake() => Instance = this;
 
@@ -77,7 +84,6 @@ public class RoomUIController : MonoBehaviour
         readyButton.onClick.RemoveAllListeners();
         readyButton.onClick.AddListener(() =>
         {
-            Debug.Log($"[RoomUIController] Ready 버튼 클릭됨. PlayerReady.LocalInstance is null? {PlayerReady.LocalInstance == null}");
             PlayerReady.LocalInstance?.ToggleReady();
         });
 
@@ -189,14 +195,9 @@ public class RoomUIController : MonoBehaviour
         bool localIsReady = false;
         ulong localClientId = NetworkManager.Singleton.LocalClientId;
 
-        Debug.Log("참여자 카운트 : " + total);
-
         for (int i = 0; i < RoomSettings.Instance.AllPlayers.Count; i++)
         {
             var playerInfo = RoomSettings.Instance.AllPlayers[i];
-
-            Debug.Log($"[RoomUIController] AllPlayers[{i}] ClientId={playerInfo.ClientId}, IsReady={playerInfo.IsReady} / localClientId={localClientId}");
-
             if (playerInfo.IsReady)
             {
                 readyCount++;
@@ -204,21 +205,17 @@ public class RoomUIController : MonoBehaviour
 
             if (playerInfo.ClientId == localClientId)
             {
-                Debug.Log($"[RoomUIController] 내 플레이어 정보 발견: ClientId={playerInfo.ClientId}, IsReady={playerInfo.IsReady}");
                 localIsReady = playerInfo.IsReady;
             }
         }
-
-        Debug.Log($"[RoomUIController] Refresh 결과: localClientId={localClientId}, localIsReady={localIsReady}, readyCount={readyCount}/{total}");
-
         if (readyButtonText != null)
         {
-            readyButtonText.text = localIsReady ? "READY Cancel" : "READY";
+            readyButtonText.text = localIsReady ? readyCancelButtonLocalizedString.GetLocalizedString() : readyButtonLocalizedString.GetLocalizedString();
         }
 
         if (startGameButton != null && startGameButton.gameObject.activeSelf)
         {
-            startGameButtonText.text = $"GameStart ({readyCount}/{targetCount})";
+            startGameButtonText.text = $"{startGameButtonLocalizedString.GetLocalizedString()} ({readyCount}/{targetCount})";
             startGameButton.interactable = total == targetCount && readyCount == total;
         }
     }

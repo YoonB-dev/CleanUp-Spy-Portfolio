@@ -194,6 +194,15 @@
                     "processors": "",
                     "interactions": "",
                     "initialStateCheck": false
+                },
+                {
+                    "name": "Vacuum",
+                    "type": "Button",
+                    "id": "ae6b9d92-37df-45e5-8e4e-8cb181cc5eaf",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
                 }
             ],
             "bindings": [
@@ -469,6 +478,17 @@
                     "processors": "",
                     "groups": "",
                     "action": "PushToTalk",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "eec277fe-bc95-40e9-ab31-c4c380f112a9",
+                    "path": "<Mouse>/leftButton",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Vacuum",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }
