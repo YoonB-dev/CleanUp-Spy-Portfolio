@@ -196,9 +196,9 @@
                     "initialStateCheck": false
                 },
                 {
-                    "name": "Vacuum",
+                    "name": "UseItem",
                     "type": "Button",
-                    "id": "ae6b9d92-37df-45e5-8e4e-8cb181cc5eaf",
+                    "id": "41eabc18-6499-4d8f-8eb7-29ce3933eef6",
                     "expectedControlType": "",
                     "processors": "",
                     "interactions": "",
@@ -483,12 +483,12 @@
                 },
                 {
                     "name": "",
-                    "id": "eec277fe-bc95-40e9-ab31-c4c380f112a9",
+                    "id": "ada66c28-cd59-4c56-9a0e-c2a16b2a4276",
                     "path": "<Mouse>/leftButton",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
-                    "action": "Vacuum",
+                    "action": "UseItem",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

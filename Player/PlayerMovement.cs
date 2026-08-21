@@ -15,7 +15,9 @@ public class PlayerMovement : NetworkBehaviour
     [SerializeField] private LayerMask groundLayer;
     private Vector2 _serverMoveInput;
     public Vector2 MoveInput => _serverMoveInput;
-
+    // 감전 상태 관련 변수 (테이저건)
+    private float _currentSlowFactor = 1.0f;
+    private Coroutine _slowCoroutine;
     /// <summary>
     /// 발을 디딜 수 있는 레이어(Ground/Wall/Item). 래그돌 기상 시 지면 높이 재판정에 사용
     /// </summary>
@@ -70,8 +72,9 @@ public class PlayerMovement : NetworkBehaviour
         }
     }
 
-    private void OnDestroy()
+    public override void OnDestroy()
     {
+        base.OnDestroy();
         if (_ownedRagdoll != null)
         {
             Destroy(_ownedRagdoll);
@@ -80,8 +83,6 @@ public class PlayerMovement : NetworkBehaviour
 
     private void Update()
     {
-        // 마피아 돌진중이면 스킵
-
         if (!IsServer)
         {
             return;
@@ -103,7 +104,7 @@ public class PlayerMovement : NetworkBehaviour
         {
             Vector3 move = new Vector3(_serverMoveInput.x, 0f, _serverMoveInput.y);
             move = transform.right * move.x + transform.forward * move.z;
-            move *= moveSpeed;
+            move *= moveSpeed * _currentSlowFactor; // 감전 상태 적용
 
             // 붙잡고 있으면 이동 둔화
             if (_playerGrab != null && _playerGrab.IsGrabbing)
@@ -211,4 +212,38 @@ public class PlayerMovement : NetworkBehaviour
             verticalVelocity = Mathf.Sqrt(jumpForce * -2f * gravity);
         }
     }
+
+    #region 감전 상태 관련 메서드 (테이저건)
+    /// <summary>
+    /// [서버 전용] 플레이어에게 감전/둔화 상태 부여
+    /// </summary>
+    public void ApplySlowServer(float duration, float factor)
+    {
+        if (!IsServer) return;
+
+        if (duration <= 0f) return;
+        
+        factor = Mathf.Clamp01(factor);
+        
+        // 더 강한 감속이 진행 중이면 완화되지 않도록 더 낮은 배율을 유지한다.
+        if (_slowCoroutine != null)
+        {
+            factor = Mathf.Min(factor, _currentSlowFactor);
+            StopCoroutine(_slowCoroutine);
+        }
+        _slowCoroutine = StartCoroutine(SlowRoutineServer(duration, factor));
+
+        Debug.Log($"[PlayerMovement] 감전 상태 적용: {duration}초 동안 이동속도 {factor * 100}%로 감소");
+    }
+
+    private System.Collections.IEnumerator SlowRoutineServer(float duration, float factor)
+    {
+        _currentSlowFactor = factor; // 속도 감소 (예: 0.3)
+
+        yield return new WaitForSeconds(duration);
+
+        _currentSlowFactor = 1.0f; // 지정된 시간(duration) 지나면 100% 속도로 원상 복구
+        _slowCoroutine = null;
+    }
+    #endregion
 }

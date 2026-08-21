@@ -1,11 +1,12 @@
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 /// <summary>
 /// 전방 원뿔(Cone) 범위를 대상으로 쓰레기(PickupCategory.Trash)를 끌어당기고 노즐 앞에 고정시키는 흡입기 스크립트.
 /// </summary>
 [RequireComponent(typeof(PickupItem))]
-public class MagnetAttractor : NetworkBehaviour
+public class MagnetAttractor : NetworkBehaviour, IUsableItem
 {
     [Header("Cone Settings")]
     [Tooltip("흡입 노즐/주둥이 위치 (없으면 이 오브젝트의 Transform 사용)")]
@@ -61,6 +62,24 @@ public class MagnetAttractor : NetworkBehaviour
         _thisPickupItem = GetComponent<PickupItem>();
         _actualNozzlePoint = nozzlePoint != null ? nozzlePoint : transform;
     }
+    public void OnUse(InputAction.CallbackContext context, Camera playerCamera)
+    {
+        if (context.performed)
+        {
+            SetMagnetStateServerRpc(true);
+        }
+        else if (context.canceled)
+        {
+            SetMagnetStateServerRpc(false);
+        }
+    }
+
+    [ServerRpc]
+    public void SetMagnetStateServerRpc(bool active)
+    {
+        if (!IsServer) return;
+        _isMagnetActive.Value = active;
+    }
 
     private void FixedUpdate()
     {
@@ -70,12 +89,6 @@ public class MagnetAttractor : NetworkBehaviour
         if (!_isMagnetActive.Value || !_thisPickupItem.IsHeld) return;
 
         ApplyConeMagneticForce();
-    }
-
-    public void SetMagnetState(bool active)
-    {
-        if (!IsServer) return;
-        _isMagnetActive.Value = active;
     }
 
     private void ApplyConeMagneticForce()

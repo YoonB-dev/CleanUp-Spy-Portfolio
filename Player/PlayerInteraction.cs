@@ -6,6 +6,7 @@ public class PlayerInteraction : NetworkBehaviour
 {
     [Header("Interaction Settings")]
     [SerializeField] private Camera playerCamera;
+    public Camera PlayerCamera => playerCamera; // 외부에서 접근 가능하도록 프로퍼티 제공
     [SerializeField] private float interactDistance = 5f;
     [SerializeField] private float pickupRadius = 0.2f;    // 줍기 판정 구체 반지름 (작은 아이템 보정용)
     [SerializeField] private LayerMask pickupLayerMask = ~0;
@@ -33,8 +34,6 @@ public class PlayerInteraction : NetworkBehaviour
     
     public RagdollPoser playerRagDollPoser; // 인스펙터에서 연결
     [SerializeField] private LayerMask interactLayerMask = ~0;
-
-    private MagnetAttractor _activeMagnet;
     private void Awake()
     {
         if (playerCamera == null)
@@ -158,9 +157,6 @@ public class PlayerInteraction : NetworkBehaviour
         // 손에 든 아이템이 있어야만 버릴 수 있음
         if (context.started)
         {
-            // 자석 해제
-            StopActiveMagnet();
-
             if (!_gate.CanDo(PlayerAction.DropItem)) return;
 
             _dropKeyPressTime = Time.time;
@@ -471,71 +467,26 @@ public class PlayerInteraction : NetworkBehaviour
 
     #endregion
 
-    #region 흡입기
-
-    // ==========================================
-    // 흡입기(자석) 동작 Input Action 콜백
-    // ==========================================
-    public void OnVacuum(InputAction.CallbackContext context)
+    #region 아이템 사용 통합 처리 (IUsableItem 인터페이스) -> 흡입기, 테이저건
+    /// <summary>
+    /// 마우스 좌클릭 통합 입력 콜백 (Input Action: UseItem 에 바인딩)
+    /// </summary>
+    public void OnUseItem(InputAction.CallbackContext context)
     {
         if (!IsOwner) return;
 
-        // 버튼을 뗄 때(canceled)는 게이트 조건과 무관하게 동작 중지
+        // 1. 행동 가능 여부(게이트) 검사
         if (context.performed && !_gate.CanDo(PlayerAction.UseTool)) return;
-        if (!IsHoldingItem()) return;
 
-        var heldItem = GetCurrentHeldItem();
-        if (heldItem == null || !heldItem.TryGetComponent<MagnetAttractor>(out var magnet)) return;
+        // 2. PlayerInventory를 통해 현재 장착한 아이템 가져오기
+        PickupItem currentItem = _inventory.GetCurrentEquippedItem();
+        if (currentItem == null) return;
 
-        if (context.performed)
+        // 3. IUsableItem 인터페이스가 존재하면 OnUse 호출! (테이저건, 흡입기, 카메라 등 일률 적용)
+        if (currentItem.TryGetComponent<IUsableItem>(out var usableItem))
         {
-            _activeMagnet = magnet;
-            SetMagnetStateServerRpc(magnet.NetworkObject, true);
-        }
-        else if (context.canceled)
-        {
-            StopActiveMagnet();
+            usableItem.OnUse(context, playerCamera);
         }
     }
-
-    /// <summary>
-    /// 현재 활성화되어 있는 자석을 안전하게 끄고 참조를 해제합니다. (클라이언트)
-    /// </summary>
-    public void StopActiveMagnet()
-    {
-        if (!IsOwner || _activeMagnet == null) return;
-
-        SetMagnetStateServerRpc(_activeMagnet.NetworkObject, false);
-        _activeMagnet = null;
-    }
-
-    [ServerRpc]
-    private void SetMagnetStateServerRpc(NetworkObjectReference magnetNetRef, bool active)
-    {
-        Debug.Log($"[ServerRpc] SetMagnetStateServerRpc called. Active: {active}");
-        if (!IsServer) return;
-
-        // 플레이어 행동 권한 검사
-        if (active && !_gate.CanDo(PlayerAction.UseTool)) return;
-        // 2. [보안 검증] 요청자(서버)가 현재 손에 들고 있는 아이템 가져오기
-        PickupItem currentHeldItem = GetCurrentHeldItem();
-        if (currentHeldItem == null) return;
-        // 3. 클라이언트가 요청한 NetworkObject 참조 해독
-        if (magnetNetRef.TryGet(out NetworkObject requestedNetObj))
-        {
-            if (requestedNetObj == currentHeldItem.NetworkObject)
-            {
-                if (currentHeldItem.TryGetComponent<MagnetAttractor>(out var magnet))
-                {
-                    magnet.SetMagnetState(active);
-                }
-            }
-            else
-            {
-                Debug.LogWarning($"[Security Warning] {OwnerClientId}번 클라이언트가 자신이 들고 있지 않은 자석({requestedNetObj.NetworkObjectId})의 상태 변경을 시도했습니다.");
-            }
-        }
-    }
-
     #endregion
 }
