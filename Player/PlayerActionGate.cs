@@ -20,6 +20,7 @@ public enum PlayerAction
     ToggleGun,      // 페인트 총 꺼내기
     FirePaint,      // 페인트 발사
     SpawnTrash,     // 마피아 쓰레기 생성
+    DragObject,     // 드래그 오브젝트 끌기
 }
 
 /// <summary>
@@ -35,6 +36,7 @@ public enum PlayerCondition
     HoldingItem = 1 << 3,   // 1~3 슬롯 아이템을 손에 듦(손 점유)
     PaintGunOut = 1 << 4,   // 4 슬롯 페인트 총을 손에 듦(손 점유)
     Reaching = 1 << 5,      // 잡기 키를 누르는 중(아직 못 잡았어도 손을 뻗고 있음)
+    DraggingObject = 1 << 6, // 드래그 오브젝트를 끌고 있음(손 점유)
 }
 
 /// <summary>
@@ -59,7 +61,7 @@ public class PlayerActionGate : MonoBehaviour
         }
     }
 
-    private const Cond BUSY = Cond.Downed | Cond.Grabbing;
+    private const Cond BUSY = Cond.Downed | Cond.Grabbing | Cond.DraggingObject;
 
     private const Cond RESTRAINED = BUSY | Cond.Grabbed;
 
@@ -68,7 +70,7 @@ public class PlayerActionGate : MonoBehaviour
     private static readonly Dictionary<PlayerAction, Rule> RULES = new()
     {
         // 쓰러졌거나 붙잡히면 발이 묶인다
-        [PlayerAction.Jump] = new Rule(Cond.Downed | Cond.Grabbed),
+        [PlayerAction.Jump] = new Rule(Cond.Downed | Cond.Grabbed | Cond.DraggingObject),
 
         // 손이 비어야 친다(잡기 키를 누르는 동안도 손 점유). 붙잡힌 상태에선 반격/탈출용으로 허용
         [PlayerAction.Punch] = new Rule(BUSY | Cond.Reaching | Cond.HoldingItem | Cond.PaintGunOut),
@@ -77,7 +79,7 @@ public class PlayerActionGate : MonoBehaviour
         [PlayerAction.Grab] = new Rule(RESTRAINED | Cond.HoldingItem | Cond.PaintGunOut),
 
         // 잡고 있어도 가능(서버가 먼저 놓는다). 쓰러진 동안엔 기상 후에
-        [PlayerAction.Dive] = new Rule(Cond.Downed | Cond.Grabbed),
+        [PlayerAction.Dive] = new Rule(Cond.Downed | Cond.Grabbed | Cond.DraggingObject),
 
         // 붙잡혀도 손은 쓸 수 있으므로 아이템/도구 조작은 전부 허용.
         [PlayerAction.Pickup] = new Rule(BUSY | Cond.HoldingItem),
@@ -91,12 +93,21 @@ public class PlayerActionGate : MonoBehaviour
         [PlayerAction.ToggleLight] = new Rule(RESTRAINED),
 
         [PlayerAction.SpawnTrash] = new Rule(RESTRAINED | Cond.HoldingItem),
+        // 끌기 시작 조건 (이미 끌고 있거나 손에 무언가 들려있을 때는 끌기 시작 불가)
+        [PlayerAction.DragObject] = new Rule(RESTRAINED | Cond.HoldingItem | Cond.PaintGunOut),
     };
 
     private PlayerKnockdown _knockdown;
     private PlayerGrab _grab;
     private PlayerInventory _inventory;
-
+    private PlayerMovement _movement;
+    private void Awake()
+    {
+        _knockdown = GetComponent<PlayerKnockdown>();
+        _grab = GetComponent<PlayerGrab>();
+        _inventory = GetComponent<PlayerInventory>();
+        _movement = GetComponent<PlayerMovement>();
+    }
     /// <summary>플레이어에게서 게이트를 얻는다. 프리팹에 없으면 붙여서 사용</summary>
     /// <param name="player">Player 루트 오브젝트</param>
     public static PlayerActionGate GetOrAdd(GameObject player)
@@ -154,6 +165,11 @@ public class PlayerActionGate : MonoBehaviour
                 {
                     conditions |= Cond.PaintGunOut;
                 }
+                // 플레이어가 현재 기구를 끌고 있는지 확인
+                if (_movement != null && _movement.IsDraggingObject)
+                {
+                    conditions |= Cond.DraggingObject;
+                }
             }
 
             return conditions;
@@ -172,12 +188,5 @@ public class PlayerActionGate : MonoBehaviour
         Cond conditions = CurrentConditions;
         return (conditions & rule.Blocked) == Cond.None
             && (conditions & rule.Required) == rule.Required;
-    }
-
-    private void Awake()
-    {
-        _knockdown = GetComponent<PlayerKnockdown>();
-        _grab = GetComponent<PlayerGrab>();
-        _inventory = GetComponent<PlayerInventory>();
     }
 }

@@ -20,6 +20,16 @@ public class PickupHighlight : MonoBehaviour
 
     private void Awake()
     {
+        EnsureInitialized();
+        SetHighlighted(false);
+    }
+    /// <summary>
+    /// 컴포넌트 및 자식 DedicatedOutlineObject 생성 보장
+    /// </summary>
+    private void EnsureInitialized()
+    {
+        if (outlineRenderer != null && outlineMaterialInstance != null) return;
+
         InitComponents();
         BuildOutlineMaterial();
 
@@ -28,17 +38,31 @@ public class PickupHighlight : MonoBehaviour
             Mesh targetMesh = targetMeshFilter.sharedMesh;
             RefreshOutlineMesh(targetMesh, targetMesh.subMeshCount);
         }
-        
-        SetHighlighted(false);
     }
-
     private void InitComponents()
     {
-        if (targetRenderer == null) targetRenderer = GetComponentInChildren<MeshRenderer>();
-        if (targetMeshFilter == null && targetRenderer != null) targetMeshFilter = targetRenderer.GetComponent<MeshFilter>();
+        // 1. Target Renderer 및 Target MeshFilter 자동 할당 (자식 검색)
+        if (targetRenderer == null)
+        {
+            // 하위 렌더러 중 아웃라인 전용 오브젝트를 제외한 첫번째 MeshRenderer 탐색
+            MeshRenderer[] renderers = GetComponentsInChildren<MeshRenderer>(true);
+            foreach (var r in renderers)
+            {
+                if (!r.gameObject.name.Equals("DedicatedOutlineObject"))
+                {
+                    targetRenderer = r;
+                    break;
+                }
+            }
+        }
 
-        // 자식 아웃라인 오브젝트가 없다면 Awake 시 1회 고정 구조로 보장
-        if (outlineRenderer == null && targetRenderer != null)
+        if (targetMeshFilter == null && targetRenderer != null)
+        {
+            targetMeshFilter = targetRenderer.GetComponent<MeshFilter>();
+        }
+
+        // 2. Target Renderer의 '직속 자식'으로 전용 아웃라인 오브젝트 보장
+        if (targetRenderer != null)
         {
             Transform existingOutline = targetRenderer.transform.Find("DedicatedOutlineObject");
             GameObject outlineObj;
@@ -83,7 +107,8 @@ public class PickupHighlight : MonoBehaviour
     /// </summary>
     public void RefreshOutlineMesh(Mesh newMesh, int submeshCount)
     {
-        if (outlineMeshFilter == null || outlineRenderer == null) InitComponents();
+        if (outlineMeshFilter == null || outlineRenderer == null) EnsureInitialized();
+        if (outlineMeshFilter == null) return;
 
         // 1. 메쉬 동기화
         outlineMeshFilter.sharedMesh = newMesh;
@@ -102,6 +127,11 @@ public class PickupHighlight : MonoBehaviour
 
     public void SetHighlighted(bool highlighted)
     {
+        if (highlighted && (outlineRenderer == null || outlineMaterialInstance == null))
+        {
+            EnsureInitialized();
+        }
+
         if (outlineRenderer != null)
         {
             outlineRenderer.gameObject.SetActive(highlighted);

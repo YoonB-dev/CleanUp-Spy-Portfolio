@@ -15,6 +15,7 @@ public class PlayerInteraction : NetworkBehaviour
     private PlayerInventory _inventory; // 플레이어의 인벤토리 인터페이스
     public PlayerInventory Inventory => _inventory; // 외부에서 인벤토리 접근용
     private PickupItem hoveredItem; // 플레이어가 현재 바라보고 있는 아이템
+    private DraggableObject hoveredDraggable; // 플레이어가 현재 바라보고 있는 드래그 가능한 오브젝트
     // 두꺼비집 관련 컴포넌트
     private LightInteraction _lightInteraction;
     private PlayerActionGate _gate;
@@ -33,6 +34,7 @@ public class PlayerInteraction : NetworkBehaviour
     [SerializeField] private float maxThrowTorque = 8f;  // 풀차징으로 던졌을 때의 회전력
     
     public RagdollPoser playerRagDollPoser; // 인스펙터에서 연결
+    private DraggableObject _activeDragableObject; // 현재 끌고 있는 드래그 오브젝트(예: 이동식 분쇄기)
     [SerializeField] private LayerMask interactLayerMask = ~0;
     private void Awake()
     {
@@ -119,6 +121,22 @@ public class PlayerInteraction : NetworkBehaviour
     {
         if (!IsOwner || !context.started) return;
 
+        // 이미 파쇄기를 끌고 있다면 줍기 스킵 (중복 방지)
+        if (_activeDragableObject != null)
+        {
+            _activeDragableObject.RequestStopDragServerRpc();
+            GetComponent<PlayerMovement>()?.SetDraggleObject(null);
+            // 래그돌 손 뻗기 자세 해제
+            if (playerRagDollPoser != null)
+            {
+                playerRagDollPoser.SetCarryRequested(false);
+                playerRagDollPoser.SetCarryTarget(null);
+            }
+
+            _activeDragableObject = null;
+            return;
+        }
+
         // 이미 아이템을 들고 있다면 줍기 스킵 (중복 방지)
         if (IsHoldingItem())
         {
@@ -137,6 +155,23 @@ public class PlayerInteraction : NetworkBehaviour
             return; // 배치를 시도했으므로 아래 줍기 로직은 타지 않음
         }
 
+        // 3. 손에 아무것도 없고, 바라보는 곳에 파쇄기가 있는지 확인
+        if (playerCamera != null && Physics.Raycast(playerCamera.transform.position, playerCamera.transform.forward, out RaycastHit hit, interactDistance, interactLayerMask))
+        {
+            if (hit.collider.TryGetComponent<DraggableObject>(out var draggable))
+            {
+                if (!draggable.IsBeingDragged) // 다른 사람이 끌고 있지 않다면
+                {
+                    draggable.SetHighlighted(true);
+                    _activeDragableObject = draggable;
+                    _activeDragableObject.RequestStartDragServerRpc(NetworkObjectId);
+                    GetComponent<PlayerMovement>()?.SetDraggleObject(_activeDragableObject);
+                    return;
+                }
+            }
+        }
+
+        // 4. 손에 아무것도 없고, 바라보는 곳에 줍기 가능한 아이템이 있는지 확인
         if (!_gate.CanDo(PlayerAction.Pickup)) return;
 
         // 통합 탐색 함수 사용
@@ -230,10 +265,33 @@ public class PlayerInteraction : NetworkBehaviour
     private void UpdateHoveredItem()
     {
         PickupItem newHoveredItem = null;
-        
+        DraggableObject newHoveredDraggable = null;
+
         if (playerCamera != null && Physics.Raycast(playerCamera.transform.position, playerCamera.transform.forward, out RaycastHit hit, interactDistance))
         {
             hit.collider.TryGetComponent<PickupItem>(out newHoveredItem);
+            hit.collider.TryGetComponent<DraggableObject>(out newHoveredDraggable);
+        }
+
+        // 2. DraggableObject 하이라이트 갱신 로직
+        if (newHoveredDraggable != hoveredDraggable)
+        {
+            // 이전 Draggable 하이라이트 끄기
+            if (hoveredDraggable != null)
+            {
+                hoveredDraggable.SetHighlighted(false);
+            }
+
+            hoveredDraggable = newHoveredDraggable;
+
+            // 새로운 Draggable 하이라이트 켜기 (끌기 시작 가능한 조건일 때만)
+            if (hoveredDraggable != null && !hoveredDraggable.IsBeingDragged)
+            {
+                if (_gate.CanDo(PlayerAction.DragObject))
+                {
+                    hoveredDraggable.SetHighlighted(true);
+                }
+            }
         }
 
         if (newHoveredItem == hoveredItem)

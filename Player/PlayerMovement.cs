@@ -38,6 +38,9 @@ public class PlayerMovement : NetworkBehaviour
     private PlayerActionGate _gate;
     private GameObject _ownedRagdoll;   // 월드 공간으로 분리된 액티브 래그돌 (Player 소유)
 
+    // 드래그 오브젝트 관련
+    private DraggableObject _currentDraggingObject;
+    public bool IsDraggingObject => _currentDraggingObject != null && _currentDraggingObject.IsBeingDragged;
     private void Awake()
     {
         if (characterController == null)
@@ -107,7 +110,7 @@ public class PlayerMovement : NetworkBehaviour
             move *= moveSpeed * _currentSlowFactor; // 감전 상태 적용
 
             // 붙잡고 있으면 이동 둔화
-            if (_playerGrab != null && _playerGrab.IsGrabbing)
+            if ((_playerGrab != null && _playerGrab.IsGrabbing) || IsDraggingObject)
             {
                 move *= GRAB_HOLD_MOVE_MULTIPLIER;
             }
@@ -244,6 +247,13 @@ public class PlayerMovement : NetworkBehaviour
 
         _currentSlowFactor = 1.0f; // 지정된 시간(duration) 지나면 100% 속도로 원상 복구
         _slowCoroutine = null;
+    }
+    #endregion
+
+    #region 드래그 오브젝트 관련
+    public void SetDraggleObject(DraggableObject obj)
+    {
+        _currentDraggingObject = obj;
     }
     #endregion
 }
