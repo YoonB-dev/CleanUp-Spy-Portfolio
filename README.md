@@ -1,4 +1,37 @@
 # CleanUp-Spy-Portfolio
+> ⚠️ 이 프로젝트는 클린업 스파이(가명)의 전체 프로덕션 리포지토리를 공개하는 것이 아니라, 핵심 구조만 정리한 형태입니다.
+
+## 🎬 Gameplay Video
+
+[![프로젝트 시연 영상](https://img.youtube.com/vi/LFLyDDB7Q7I/hqdefault.jpg)](https://www.youtube.com/watch?v=LFLyDDB7Q7I)
+
+## 🖼️ Screenshots / Gallery
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="https://github.com/user-attachments/assets/1e6a497a-2d62-49f0-8097-f3fae1f81198" width="600" height="350" style="object-fit: cover;" alt="이미지 1"><br>
+      <sub><b>메인 화면</b></sub>
+    </td>
+    <td align="center">
+      <img src="https://github.com/user-attachments/assets/c2b2a43d-1d9f-41a6-a589-da6c3c64e98b" width="600" height="350" style="object-fit: cover;" alt="이미지 2"><br>
+      <sub><b>흡입기 동작 화면</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+        <img src="https://github.com/user-attachments/assets/58ee4e8c-6c69-4d5d-8be8-45654ab7a6d3" width="600" height="350" style="object-fit: cover;" alt="이미지 1"><br>
+        <sub><b>페인트 총 화면</b></sub>
+      </td>
+      <td align="center">
+        <img src="https://github.com/user-attachments/assets/679693e6-729a-4a45-a7b7-3acd31e8258e" width="600" height="350" style="object-fit: cover;" alt="이미지 2"><br>
+        <sub><b>폴라로이드 카메라 동작 화면</b></sub>
+      </td>
+  </tr>
+
+</table>
+
+# CleanUp-Spy-Portfolio
 
 Unity 기반 멀티플레이어 추리 게임 프로젝트로, 로비 구성, 역할 배정, 아이템 상호작용, 동기화된 입력 처리, 네트워크 기반 게임 루프를 포함합니다.
 
