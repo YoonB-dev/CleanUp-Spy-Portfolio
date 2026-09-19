@@ -40,7 +40,8 @@ public class PlayerMovement : NetworkBehaviour
 
     // 드래그 오브젝트 관련
     private DraggableObject _currentDraggingObject;
-    public bool IsDraggingObject => _currentDraggingObject != null && _currentDraggingObject.IsBeingDragged;
+    // 다른 플레이어가 같은 오브젝트를 끌고 있는 경우와 구분하기 위해 끄는 사람이 나인지까지 확인한다
+    public bool IsDraggingObject => _currentDraggingObject != null && _currentDraggingObject.GrabberPlayerId == NetworkObjectId;
     private void Awake()
     {
         if (characterController == null)

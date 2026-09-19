@@ -14,7 +14,14 @@ public class FirstPersonLook : NetworkBehaviour
     public Transform PlayerCameraTransform => playerCamera != null ? playerCamera.transform : cameraPivot;
     private float _pitch;
     private float _yaw;
-    public float Pitch => _pitch;
+    // pitch(상하 시선각)는 CarryAnchor 회전 등 다른 클라이언트가 매 프레임 읽어야 하므로
+    // 로컬 필드만으로는 Owner/Server가 아닌 제3자 클라이언트에 전파되지 않는다. NetworkVariable로 직접 복제한다.
+    private readonly NetworkVariable<float> _networkedPitch = new NetworkVariable<float>(
+        0f,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Owner
+    );
+    public float Pitch => _networkedPitch.Value;
     public float Yaw => _yaw;
     private Vector2 _lookInput;
     private Vector3 _cameraBaseLocalPos;
@@ -94,6 +101,7 @@ public class FirstPersonLook : NetworkBehaviour
         _yaw += yawDelta;
         _pitch -= pitchDelta;
         _pitch = Mathf.Clamp(_pitch, minPitch, maxPitch);
+        _networkedPitch.Value = _pitch; // Owner가 쓰면 서버를 거쳐 모든 클라이언트로 자동 복제됨
 
         ApplyPitchToCamera(_pitch);
 

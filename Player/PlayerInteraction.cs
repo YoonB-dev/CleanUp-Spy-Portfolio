@@ -124,7 +124,7 @@ public class PlayerInteraction : NetworkBehaviour
         // 이미 파쇄기를 끌고 있다면 줍기 스킵 (중복 방지)
         if (_activeDragableObject != null)
         {
-            _activeDragableObject.RequestStopDragServerRpc();
+            RequestStopDragServerRpc(new NetworkObjectReference(_activeDragableObject.NetworkObject));
             GetComponent<PlayerMovement>()?.SetDraggleObject(null);
             // 래그돌 손 뻗기 자세 해제
             if (playerRagDollPoser != null)
@@ -160,11 +160,12 @@ public class PlayerInteraction : NetworkBehaviour
         {
             if (hit.collider.TryGetComponent<DraggableObject>(out var draggable))
             {
-                if (!draggable.IsBeingDragged) // 다른 사람이 끌고 있지 않다면
+                // 다른 사람이 끌고 있지 않고, 서버 검증과 같은 게이트를 통과할 때만 시작 (거절돼서 서버와 상태가 어긋나는 것 방지)
+                if (!draggable.IsBeingDragged && _gate.CanDo(PlayerAction.DragObject))
                 {
                     draggable.SetHighlighted(true);
                     _activeDragableObject = draggable;
-                    _activeDragableObject.RequestStartDragServerRpc(NetworkObjectId);
+                    RequestStartDragServerRpc(new NetworkObjectReference(_activeDragableObject.NetworkObject));
                     GetComponent<PlayerMovement>()?.SetDraggleObject(_activeDragableObject);
                     return;
                 }
@@ -216,6 +217,74 @@ public class PlayerInteraction : NetworkBehaviour
             // 로컬 수치 초기화
             _currentThrowGauge = 0f;
             if (_placementPreview != null) _placementPreview.ClearPreview();
+        }
+    }
+
+    /// <summary>
+    /// 파쇄기 등 DraggableObject 끌기 시작 요청. 호출자가 소유한 PlayerInteraction 위에서 RPC를 받아
+    /// 서버에서 직접 대상 오브젝트의 로직을 호출한다 (대상 오브젝트는 호출자 소유가 아니므로 이렇게 우회해야 함).
+    /// </summary>
+    [ServerRpc]
+    private void RequestStartDragServerRpc(NetworkObjectReference draggableReference)
+    {
+        // 상호 배타 규칙 서버 재검증(치트 방어). 이미 무언가 끌고 있으면 게이트(RESTRAINED ⊃ DraggingObject)가 중복 시작도 막는다
+        if (!_gate.CanDo(PlayerAction.DragObject)) return;
+
+        if (!draggableReference.TryGet(out NetworkObject draggableNetworkObject)
+            || !draggableNetworkObject.TryGetComponent<DraggableObject>(out var draggable))
+        {
+            return;
+        }
+
+        // 클라이언트가 지정한 대상을 믿지 않고, 서버에서 실제 상호작용 거리 안인지 확인
+        if (!IsWithinDragRange(draggable)) return;
+
+        draggable.StartDrag(NetworkObjectId);
+
+        // 이동 둔화는 서버의 PlayerMovement가 판정하므로, 서버 쪽 인스턴스에도 끌고 있는 대상을 알려줘야 한다
+        if (draggable.GrabberPlayerId == NetworkObjectId)
+        {
+            GetComponent<PlayerMovement>()?.SetDraggleObject(draggable);
+        }
+    }
+
+    // 조준 지연으로 정상 요청이 튕기지 않도록 interactDistance에 여유를 둔다 (PickupItem.CanBePickedUpBy와 같은 방식)
+    private const float DRAG_RANGE_TOLERANCE = 1f;
+
+    private bool IsWithinDragRange(DraggableObject draggable)
+    {
+        Vector3 origin = playerCamera != null ? playerCamera.transform.position : transform.position;
+        float maxDistance = interactDistance + DRAG_RANGE_TOLERANCE;
+
+        // 큰 오브젝트라 중심점이 아니라 콜라이더 경계 기준으로 거리를 잰다 (bounds는 비볼록 MeshCollider에도 안전)
+        Collider[] colliders = draggable.GetComponentsInChildren<Collider>();
+        if (colliders.Length == 0)
+        {
+            return Vector3.Distance(origin, draggable.transform.position) <= maxDistance;
+        }
+
+        foreach (Collider col in colliders)
+        {
+            if (Vector3.Distance(origin, col.bounds.ClosestPoint(origin)) <= maxDistance)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// DraggableObject 끌기 해제 요청. 위와 동일한 이유로 호출자 소유 오브젝트를 거쳐 처리한다.
+    /// </summary>
+    [ServerRpc]
+    private void RequestStopDragServerRpc(NetworkObjectReference draggableReference)
+    {
+        if (draggableReference.TryGet(out NetworkObject draggableNetworkObject)
+            && draggableNetworkObject.TryGetComponent<DraggableObject>(out var draggable)
+            && draggable.GrabberPlayerId == NetworkObjectId) // 내가 끌고 있는 것만 해제 가능 (참고로 NetworkObjectId는 요청을 보낸 플레이어의 ID임)
+        {
+            draggable.StopDrag();
+            GetComponent<PlayerMovement>()?.SetDraggleObject(null);
         }
     }
 

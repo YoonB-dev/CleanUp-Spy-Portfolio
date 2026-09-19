@@ -91,15 +91,20 @@ public class DraggableObject : NetworkBehaviour
         }
     }
 
-    [ServerRpc]
-    public void RequestStartDragServerRpc(ulong playerId)
+    /// <summary>
+    /// 실제 서버에서 끌기 시작을 처리하는 핵심 로직 (RPC가 아니므로 서버 내부에서 자유롭게 호출 가능).
+    /// 호출하는 쪽(PlayerInteraction)이 자신이 소유한 오브젝트 위에서 ServerRpc를 받아 이 메서드를 호출해야 한다.
+    /// </summary>
+    public void StartDrag(ulong playerId)
     {
         if (!IsServer || IsBeingDragged) return;
         _grabberPlayerId.Value = playerId;
     }
 
-    [ServerRpc]
-    public void RequestStopDragServerRpc()
+    /// <summary>
+    /// 실제 서버에서 끌기 해제를 처리하는 핵심 로직 (RPC가 아니므로 서버 내부에서 자유롭게 호출 가능).
+    /// </summary>
+    public void StopDrag()
     {
         if (!IsServer) return;
         _grabberPlayerId.Value = ulong.MaxValue;
