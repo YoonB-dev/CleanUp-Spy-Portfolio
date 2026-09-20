@@ -69,7 +69,8 @@ public class NetworkConnect : MonoBehaviour
             return;
         }
 
-        RoomCode = InviteCode.FromSteamId(SteamClient.SteamId.Value);
+        // 로컬 트랜스포트로 테스트할 때는 Steam이 초기화되지 않는다
+        RoomCode = SteamClient.IsValid ? InviteCode.FromSteamId(SteamClient.SteamId.Value) : "LOCAL";
         HideButtons();
 
         Debug.Log("Host started. Room code: " + RoomCode);

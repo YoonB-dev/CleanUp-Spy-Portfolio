@@ -1,3 +1,4 @@
+using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
 
@@ -20,6 +21,9 @@ public class RoomSettings : NetworkBehaviour
     public NetworkVariable<int> PlayerCount = new(MIN_PLAYER_COUNT);
     public NetworkVariable<int> MafiaCount = new(MIN_MAFIA_COUNT);
     public NetworkVariable<int> PlayTimeMinutes = new(MIN_PLAY_TIME);
+
+    // 호스트만 아는 값이라 참가자도 친구를 부를 수 있게 공유한다
+    public NetworkVariable<FixedString64Bytes> RoomCode = new("");
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -43,6 +47,7 @@ public class RoomSettings : NetworkBehaviour
             if (NetworkConnect.Instance != null)
             {
                 NetworkConnect.Instance.MaxPlayers = PlayerCount.Value;
+                RoomCode.Value = NetworkConnect.Instance.RoomCode ?? string.Empty;
             }
 
             // 호스트(서버 본인) 최초 등록
@@ -51,6 +56,7 @@ public class RoomSettings : NetworkBehaviour
         PlayerCount.OnValueChanged += OnVariableChanged;
         MafiaCount.OnValueChanged += OnVariableChanged;
         PlayTimeMinutes.OnValueChanged += OnVariableChanged;
+        RoomCode.OnValueChanged += OnRoomCodeChanged;
 
         // 참여자 목록(등록/해제/Ready 변경 등)이 바뀔 때마다 UI 갱신
         AllPlayers.OnListChanged += OnAllPlayersChanged;
@@ -69,6 +75,7 @@ public class RoomSettings : NetworkBehaviour
         PlayerCount.OnValueChanged -= OnVariableChanged;
         MafiaCount.OnValueChanged -= OnVariableChanged;
         PlayTimeMinutes.OnValueChanged -= OnVariableChanged;
+        RoomCode.OnValueChanged -= OnRoomCodeChanged;
         AllPlayers.OnListChanged -= OnAllPlayersChanged;
     }
 
@@ -95,6 +102,11 @@ public class RoomSettings : NetworkBehaviour
             NetworkConnect.Instance.MaxPlayers = PlayerCount.Value;
         }
 
+        RoomUIController.Instance?.Refresh();
+    }
+
+    private void OnRoomCodeChanged(FixedString64Bytes previousValue, FixedString64Bytes newValue)
+    {
         RoomUIController.Instance?.Refresh();
     }
 

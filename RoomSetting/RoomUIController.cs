@@ -3,6 +3,7 @@ using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using UnityEngine.InputSystem;
 using UnityEngine.Localization;
 
 public class RoomUIController : MonoBehaviour
@@ -40,6 +41,13 @@ public class RoomUIController : MonoBehaviour
     [Header("방 ID")]
     [SerializeField] private TMP_Text steamRoomIDText;
 
+    [Header("로비 조작 안내")]
+    [SerializeField] private GameObject readyBadge;
+    [SerializeField] private TMP_Text readyStateText;
+    [SerializeField] private string hostHint = "<color=#E8C84A>[H]</color> 작업 지시서";
+    [SerializeField] private string readyOffHint = "<color=#E8C84A>[G]</color> 준비하기      <color=#E8C84A>[H]</color> 작업 지시서";
+    [SerializeField] private string readyOnHint = "<color=#E8C84A>[G]</color> 준비 취소      <color=#E8C84A>[H]</color> 작업 지시서";
+
     [Header("Localization 목록")]
     [SerializeField] private LocalizedString readyButtonLocalizedString;
     [SerializeField] private LocalizedString readyCancelButtonLocalizedString;
@@ -67,9 +75,9 @@ public class RoomUIController : MonoBehaviour
             playTimeDownButton.onClick.AddListener(() => RoomSettings.Instance.PlayTimeDown());
 
             // InputField 직접 입력 처리
-            playerCountInputField.onEndEdit.AddListener(OnPlayerCountInputChanged);
-            mafiaCountInputField.onEndEdit.AddListener(OnMafiaCountInputChanged);
-            playTimeInputField.onEndEdit.AddListener(OnPlayTimeInputChanged);
+            if (playerCountInputField != null) playerCountInputField.onEndEdit.AddListener(OnPlayerCountInputChanged);
+            if (mafiaCountInputField != null) mafiaCountInputField.onEndEdit.AddListener(OnMafiaCountInputChanged);
+            if (playTimeInputField != null) playTimeInputField.onEndEdit.AddListener(OnPlayTimeInputChanged);
         }
 
         if (isHost)
@@ -90,9 +98,6 @@ public class RoomUIController : MonoBehaviour
         NetworkManager.Singleton.OnClientConnectedCallback += OnClientCountChanged;
         NetworkManager.Singleton.OnClientDisconnectCallback += OnClientCountChanged;
 
-        // 처음 시작 시 방 ID 텍스트 업데이트
-        steamRoomIDText.text = NetworkConnect.Instance?.RoomCode;
-
         // Start() 시점에는 아직 아무 이벤트도 발생하지 않았을 수 있으므로
         // 현재 상태를 UI에 최초 1회 강제로 반영해준다.
         // (RoomSettings가 이 프레임에 아직 스폰 전일 수 있어 한 프레임 대기 후 시도)
@@ -104,6 +109,16 @@ public class RoomUIController : MonoBehaviour
         // RoomSettings.Instance가 아직 준비 안 됐다면 준비될 때까지 대기 (최대 몇 프레임이면 충분)
         yield return new WaitUntil(() => RoomSettings.Instance != null);
         Refresh();
+    }
+
+    // 로비에서는 커서가 잠겨 있어 버튼을 누를 수 없다. 키로도 준비를 토글한다
+    private void Update()
+    {
+        if (NetworkManager.Singleton == null || NetworkManager.Singleton.IsHost) return;
+        if (Keyboard.current == null || !Keyboard.current.gKey.wasPressedThisFrame) return;
+        if (ChatUIController.Instance != null && ChatUIController.Instance.IsOpen) return;
+
+        PlayerReady.LocalInstance?.ToggleReady();
     }
 
     private void OnClientCountChanged(ulong clientId) => Refresh();
@@ -140,9 +155,9 @@ public class RoomUIController : MonoBehaviour
         playTimeDownButton.gameObject.SetActive(isHost);
 
         // 인풋 필드 호스트만 조작 가능하도록 설정
-        playerCountInputField.interactable = isHost;
-        mafiaCountInputField.interactable = isHost;
-        playTimeInputField.interactable = isHost;
+        if (playerCountInputField != null) playerCountInputField.interactable = isHost;
+        if (mafiaCountInputField != null) mafiaCountInputField.interactable = isHost;
+        if (playTimeInputField != null) playTimeInputField.interactable = isHost;
     }
 
     // RoomSettings / PlayerReady 값이 바뀔 때마다 호출됨
@@ -152,12 +167,16 @@ public class RoomUIController : MonoBehaviour
 
         playerCountText.text = $"{RoomSettings.Instance.PlayerCount.Value}";
         mafiaCountText.text = $"{RoomSettings.Instance.MafiaCount.Value}";
-        playTimeText.text = $"{RoomSettings.Instance.PlayTimeMinutes.Value}";
+        // 값은 초 단위라 그대로 찍으면 300 같은 숫자가 나온다
+        int playSeconds = RoomSettings.Instance.PlayTimeMinutes.Value;
+        playTimeText.text = $"{playSeconds / 60}:{playSeconds % 60:00}";
 
         // InputField에 편집 중이 아닐 때만 갱신 (편집 중에 강제로 덮어쓰지 않기 위함)
         if (playerCountInputField != null && !playerCountInputField.isFocused) playerCountInputField.text = RoomSettings.Instance.PlayerCount.Value.ToString();
         if (mafiaCountInputField != null && !mafiaCountInputField.isFocused) mafiaCountInputField.text = RoomSettings.Instance.MafiaCount.Value.ToString();
         if (playTimeInputField != null && !playTimeInputField.isFocused) playTimeInputField.text = RoomSettings.Instance.PlayTimeMinutes.Value.ToString();
+
+        if (steamRoomIDText != null) steamRoomIDText.text = RoomSettings.Instance.RoomCode.Value.ToString();
 
         // 참여자 수 표시
         if (participantCountText != null)
@@ -187,6 +206,14 @@ public class RoomUIController : MonoBehaviour
                     entryUI.SetPlayerInfo(playerInfo.PlayerName.ToString(), null, playerInfo.IsReady, isHost);
                 }
             }
+
+            // 남은 정원만큼 빈 자리를 채워 몇 명을 더 기다리는지 보이게 한다
+            int emptySlots = RoomSettings.Instance.PlayerCount.Value - RoomSettings.Instance.AllPlayers.Count;
+            for (int i = 0; i < emptySlots; i++)
+            {
+                GameObject slot = Instantiate(playerEntryPrefab, contentContainer);
+                if (slot.TryGetComponent<RoomPlayerEntryUI>(out var slotUI)) slotUI.SetEmpty();
+            }
         }
 
         int total = RoomSettings.Instance.AllPlayers.Count;
@@ -212,6 +239,16 @@ public class RoomUIController : MonoBehaviour
         {
             readyButtonText.text = localIsReady ? readyCancelButtonLocalizedString.GetLocalizedString() : readyButtonLocalizedString.GetLocalizedString();
         }
+
+        bool localIsHost = NetworkManager.Singleton.IsHost;
+
+        if (readyStateText != null)
+        {
+            readyStateText.text = localIsHost ? hostHint : localIsReady ? readyOnHint : readyOffHint;
+        }
+
+        // 호스트는 자동 준비라 토글 대상이 아니다. 배지를 띄우면 조작할 수 있다고 오해한다
+        if (readyBadge != null) readyBadge.SetActive(!localIsHost && localIsReady);
 
         if (startGameButton != null && startGameButton.gameObject.activeSelf)
         {
