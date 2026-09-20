@@ -22,7 +22,6 @@ public class RoleManager : NetworkBehaviour
         if (IsServer)
         {
             RoleAssignmentManager.Instance?.RegisterPlayer(this);
-            RoleAssignmentManager.Instance?.ForceAssignRole(clientId: OwnerClientId, PlayerRole.Mafia);
         }
 
         if (IsLocalPlayer)

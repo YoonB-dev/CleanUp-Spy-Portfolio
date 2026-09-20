@@ -3,6 +3,7 @@ using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.Localization;
 using UnityEngine.Localization.Settings;
+using UnityEngine.UI;
 
 public class InGameUIController : NetworkBehaviour
 {
@@ -11,7 +12,9 @@ public class InGameUIController : NetworkBehaviour
     [SerializeField] private TMP_Text gameTimerTxt; 
     [SerializeField] private GameObject jobDisplayCanvas; // 전체 캔버스 -> 시작하자마자 띄워서 일관성 유지
     [SerializeField] private GameObject jobDisplayPanel; // 직업 결정되면 동작 -> 애니메이션으로 띄워짐
-    [SerializeField] private GameObject jobDisplayImage;
+    [SerializeField] private Image roleAccent;
+    [SerializeField] private Color citizenColor = new(0.180f, 0.420f, 0.320f);
+    [SerializeField] private Color mafiaColor = new(0.871f, 0.482f, 0.157f);
     [SerializeField] private TMP_Text jobNotificationText;
 
     [Header("로컬라이제이션 string 연결")]
@@ -20,6 +23,7 @@ public class InGameUIController : NetworkBehaviour
     [SerializeField] private LocalizedString mafiaDesString;
     [SerializeField] private TMP_Text jobDescriptionText;
     private object[] _argsBuffer = new object[1]; // 한번만 생성하고 재활용 하기 위한 버파
+    private RoleManager _localRole;
 
     private void Awake()
     {
@@ -57,6 +61,8 @@ public class InGameUIController : NetworkBehaviour
             GameTimerManager.Instance.CurrentState.OnValueChanged -= OnTimerStateChanged;
             GameTimerManager.Instance.RemainingTime.OnValueChanged -= ConvertAndShowTime;
         }
+
+        if (_localRole != null) _localRole.RoleChanged -= OnLocalRoleChanged;
     }
 
     /// <summary>
@@ -69,8 +75,7 @@ public class InGameUIController : NetworkBehaviour
             case TimerState.Ready:
                 // 5초 대기 시작 시점에 직업 패널을 키고 애니메이션 적용.
                 jobDisplayPanel.SetActive(true);
-                bool isMafia = RoleAssignmentManager.Instance.IsMafia(NetworkManager.Singleton.LocalClientId);
-                SetPlayerRoleNotification(isMafia);
+                ShowLocalRole();
                 break;
 
             case TimerState.Playing:
@@ -101,20 +106,43 @@ public class InGameUIController : NetworkBehaviour
     /// <summary>
     /// 플레이어의 직업 번역본을 알림 텍스트에 적용합니다.
     /// </summary>
+    /// <summary>
+    /// 배정 목록은 서버에만 있으므로 내 플레이어의 RoleManager에서 직접 읽는다.
+    /// 값이 늦게 복제될 수 있어 변경 이벤트도 같이 받는다.
+    /// </summary>
+    private void ShowLocalRole()
+    {
+        if (_localRole == null)
+        {
+            NetworkObject player = NetworkManager.Singleton.LocalClient?.PlayerObject;
+
+            if (player != null && player.TryGetComponent(out RoleManager role))
+            {
+                _localRole = role;
+                _localRole.RoleChanged += OnLocalRoleChanged;
+            }
+        }
+
+        SetPlayerRoleNotification(_localRole != null && _localRole.CurrentRole == PlayerRole.Mafia);
+    }
+
+    private void OnLocalRoleChanged(PlayerRole role) => SetPlayerRoleNotification(role == PlayerRole.Mafia);
+
     public void SetPlayerRoleNotification(bool isMafia)
     {
         // 1. 해당 언어에 맞춰 번역된 직업 이름("마피아" 혹은 "Mafia")을 먼저 뽑아옵니다.
         string jobTableKey = isMafia ? "job_mafia" : "job_citizen";
         string translatedJobName = LocalizationSettings.StringDatabase.GetLocalizedString("InGame", jobTableKey);
         
-        // 2. 버퍼 배열에 번역된 결과값을 넣어줍니다.
-        _argsBuffer[0] = translatedJobName;
+        Color roleColor = isMafia ? mafiaColor : citizenColor;
 
-        // 3. Arguments에 넣어주면 전체 문장("당신의 직업은 마피아 입니다.")이 완성됩니다.
-        jobNotificationString.Arguments = _argsBuffer;
+        // 문장 안에서 직업 단어만 색을 입혀 눈에 먼저 들어오게 한다
+        _argsBuffer[0] = $"<color=#{ColorUtility.ToHtmlStringRGB(roleColor)}>{translatedJobName}</color>";
 
-        // 4. UI 텍스트에 반영
-        jobNotificationText.text = jobNotificationString.GetLocalizedString();
+        // 인자를 직접 넘겨야 {0}이 치환된다
+        jobNotificationText.text = jobNotificationString.GetLocalizedString(_argsBuffer);
+
+        if (roleAccent != null) roleAccent.color = roleColor;
 
         LocalizedString descriptionString = isMafia ? mafiaDesString : citizenDesString;
         jobDescriptionText.text = descriptionString.GetLocalizedString();
