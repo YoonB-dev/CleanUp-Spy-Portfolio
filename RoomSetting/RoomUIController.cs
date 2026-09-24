@@ -5,6 +5,7 @@ using UnityEngine.UI;
 using TMPro;
 using UnityEngine.InputSystem;
 using UnityEngine.Localization;
+using System;
 
 public class RoomUIController : MonoBehaviour
 {
@@ -44,15 +45,12 @@ public class RoomUIController : MonoBehaviour
     [Header("로비 조작 안내")]
     [SerializeField] private GameObject readyBadge;
     [SerializeField] private TMP_Text readyStateText;
-    [SerializeField] private string hostHint = "<color=#E8C84A>[H]</color> 작업 지시서";
-    [SerializeField] private string readyOffHint = "<color=#E8C84A>[G]</color> 준비하기      <color=#E8C84A>[H]</color> 작업 지시서";
-    [SerializeField] private string readyOnHint = "<color=#E8C84A>[G]</color> 준비 취소      <color=#E8C84A>[H]</color> 작업 지시서";
-
     [Header("Localization 목록")]
     [SerializeField] private LocalizedString readyButtonLocalizedString;
     [SerializeField] private LocalizedString readyCancelButtonLocalizedString;
     [SerializeField] private LocalizedString startGameButtonLocalizedString;
-
+    [SerializeField] private LocalizedString readyStatusSuccessTxt;
+    [SerializeField] private LocalizedString readyStatusFailTxt;
 
     private void Awake() => Instance = this;
 
@@ -244,7 +242,7 @@ public class RoomUIController : MonoBehaviour
 
         if (readyStateText != null)
         {
-            readyStateText.text = localIsHost ? hostHint : localIsReady ? readyOnHint : readyOffHint;
+            readyStateText.text = localIsHost ? readyStatusSuccessTxt.GetLocalizedString() : localIsReady ? readyButtonLocalizedString.GetLocalizedString() : readyStatusFailTxt.GetLocalizedString();
         }
 
         // 호스트는 자동 준비라 토글 대상이 아니다. 배지를 띄우면 조작할 수 있다고 오해한다
