@@ -18,6 +18,8 @@ public class PlaceableBox : NetworkBehaviour, IPickupListener
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server
     );
+    public bool IsPlaced => _isPlacedNet.Value;
+
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();

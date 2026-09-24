@@ -13,13 +13,13 @@ public class ScoreManager : NetworkBehaviour
 
     [Header("오염도 밸런스 (승패 판정과 게이지가 같이 쓴다)")]
     [Tooltip("오염도 100%에 해당하는 목표 총점")]
-    [SerializeField] private float maxContaminationScore = 100f;
+    [SerializeField] private float maxContaminationScore = 1000f;
     [Tooltip("배치되지 않은 박스 1개당 환산 점수")]
-    [SerializeField] private float scorePerBox = 1f;
+    [SerializeField] private float scorePerBox = 50f;
 
     // =====전체 쓰레기 점수 (네트워크 동기화 필요 시 사용)=====
     private readonly NetworkVariable<int> _networkTotalTrashScore = new(
-        50,
+        0, // 서버가 스폰 시 맵에 배치된 쓰레기로 계산한다 (InitializeTotalTrashScore)
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server
     );
@@ -31,7 +31,7 @@ public class ScoreManager : NetworkBehaviour
     );
     // =====전체 배치 가능한 상자 개수 (네트워크 동기화 필요 시 사용)=====
     private readonly NetworkVariable<int> _networkTotalBoxCount = new(
-        10,
+        0, // 서버가 스폰 시 맵에 있는 상자로 계산한다 (InitializeBoxCount)
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server
     );
@@ -110,6 +110,8 @@ public class ScoreManager : NetworkBehaviour
                 _boxMultiplier = RoomSettings.Instance.BoxContaminationMultiplier.Value;
                 _paintMultiplier = RoomSettings.Instance.PaintContaminationMultiplier.Value;
             }
+            InitializeTotalTrashScore();
+            InitializeBoxCount();
             RecalculateWeightedScores();
 
             // _networkTotalBoxCount.Value = defaultTotalBoxCount;
@@ -178,6 +180,46 @@ public class ScoreManager : NetworkBehaviour
             propertyGauge.CalculateGaugeValues(TrashContamination, BoxContamination, PaintContamination, maxContaminationScore);
         }
     }
+    /// <summary>
+    /// 게임 시작 시 맵에 배치된 쓰레기 점수를 합산해 전체 쓰레기 점수로 설정 (서버 전용).
+    /// 이후 마피아가 만드는 쓰레기는 AddTotalTrashScore로 따로 더해진다.
+    /// </summary>
+    private void InitializeTotalTrashScore()
+    {
+        if (!IsServer) return;
+
+        int total = 0;
+        foreach (TrashObject trash in FindObjectsByType<TrashObject>(FindObjectsInactive.Exclude))
+        {
+            // TrashData가 없는 쓰레기는 쓰레기통에서도 기본 점수 10으로 처리하므로 똑같이 센다
+            total += trash.Data != null ? trash.Data.score : 10;
+        }
+
+        _networkTotalTrashScore.Value = total;
+        Debug.Log($"[ScoreManager] 맵에 배치된 쓰레기 점수 합계: {total}");
+    }
+
+    /// <summary>
+    /// 게임 시작 시 맵에 있는 상자를 세어 전체 상자 수와 이미 배치된 상자 수를 설정 (서버 전용).
+    /// 미배치 상자 수(전체 - 배치)가 오염도에 반영된다.
+    /// </summary>
+    private void InitializeBoxCount()
+    {
+        if (!IsServer) return;
+
+        int total = 0;
+        int placed = 0;
+        foreach (PlaceableBox box in FindObjectsByType<PlaceableBox>(FindObjectsInactive.Exclude))
+        {
+            total++;
+            if (box.IsPlaced) placed++;
+        }
+
+        _networkTotalBoxCount.Value = total;
+        _networkPlacedBoxCount.Value = placed;
+        Debug.Log($"[ScoreManager] 맵의 상자: 전체 {total}개, 배치됨 {placed}개, 미배치 {total - placed}개");
+    }
+
     /// <summary>
     /// 맵 초기화 시 씬에 존재하는 전체 쓰레기 점수 및 배치 가능한 상자 개수를 설정
     /// </summary>
