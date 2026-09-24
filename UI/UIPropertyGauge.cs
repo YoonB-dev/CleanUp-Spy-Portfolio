@@ -4,11 +4,6 @@ using UnityEngine.UI;
 public class UIPropertyGauge : MonoBehaviour
 {
     [SerializeField] private Image gaugeImage;
-    [Header("Gauge Balancing Settings")]
-    [Tooltip("게이지 100%를 채우기 위한 목표 총점")]
-    [SerializeField] private float maxTargetScore = 100f;
-    [Tooltip("배치되지 않은 박스 1개당 환산 점수")]
-    [SerializeField] private float scorePerBox = 1f;
 
     // Shader Graph Blackboard의 Reference Name과 정확히 일치해야 합니다.
     private static readonly int TrashProp = Shader.PropertyToID("_Trash");
@@ -26,16 +21,14 @@ public class UIPropertyGauge : MonoBehaviour
     }
 
     /// <summary>
-    /// 실제 게임 내 점수/개수를 입력받아 MaxScore 대비 0~1 비율로 환산 후 반영
+    /// 서버가 계산한 최종 오염 점수(배율 적용됨)를 목표 총점 대비 0~1 비율로 환산 후 반영.
+    /// 밸런스 값은 승패 판정과 같이 쓰도록 ScoreManager가 들고 있다.
     /// </summary>
-    public void CalculateGaugeValues(float trashScore, int unplacedBoxCount, float paintScore)
+    public void CalculateGaugeValues(float trashScore, float boxScore, float paintScore, float maxTargetScore)
     {
         if (maxTargetScore <= 0f) return;
 
-        // 1. 박스 개수를 점수 단위로 환산
-        float boxScore = unplacedBoxCount * scorePerBox;
-
-        // 2. MaxScore 대비 각 점수의 비율(0~1) 구하기
+        // 1. MaxScore 대비 각 점수의 비율(0~1) 구하기
         float paintRatio = paintScore / maxTargetScore;
         float boxRatio = boxScore / maxTargetScore;
         float trashRatio = trashScore / maxTargetScore;
@@ -49,7 +42,7 @@ public class UIPropertyGauge : MonoBehaviour
             trashRatio /= totalRatio;
         }
 
-        // 3. 1에서부터 깎아 나가는 '누적 경계 좌표(Threshold)' 계산
+        // 2. 1에서부터 깎아 나가는 '누적 경계 좌표(Threshold)' 계산
         float paintThreshold = 1.0f - paintRatio;
         float boxThreshold = paintThreshold - boxRatio;
         float trashThreshold = boxThreshold - trashRatio;

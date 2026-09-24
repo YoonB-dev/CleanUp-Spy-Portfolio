@@ -6,6 +6,10 @@ public class RoleAssignmentManager : NetworkBehaviour
 {
     public static RoleAssignmentManager Instance { get; private set; }
     private readonly List<RoleManager> registeredPlayers = new();
+
+    // TODO: 임시 테스트용. 켜져 있으면 들어오는 플레이어를 전부 바로 마피아로 만든다. 테스트 끝나면 제거할 것
+    [SerializeField] private bool debugForceAllMafia = true;
+
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -24,9 +28,17 @@ public class RoleAssignmentManager : NetworkBehaviour
         }
 
         registeredPlayers.Add(roleManager);
+        
 
         if (IsServer)
         {
+            // TODO: 임시 테스트용. 인원 대기와 무작위 배정을 건너뛰고 바로 마피아로 만든다
+            if (debugForceAllMafia)
+            {
+                ForceAssignRole(roleManager.OwnerClientId, PlayerRole.Mafia);
+                return;
+            }
+
             CheckAndAssignRoles();
         }
     }

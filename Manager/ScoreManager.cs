@@ -11,6 +11,12 @@ public class ScoreManager : NetworkBehaviour
     [Header("Gauge UI Reference")]
     [SerializeField] private UIPropertyGauge propertyGauge;
 
+    [Header("오염도 밸런스 (승패 판정과 게이지가 같이 쓴다)")]
+    [Tooltip("오염도 100%에 해당하는 목표 총점")]
+    [SerializeField] private float maxContaminationScore = 100f;
+    [Tooltip("배치되지 않은 박스 1개당 환산 점수")]
+    [SerializeField] private float scorePerBox = 1f;
+
     // =====전체 쓰레기 점수 (네트워크 동기화 필요 시 사용)=====
     private readonly NetworkVariable<int> _networkTotalTrashScore = new(
         50,
@@ -43,6 +49,37 @@ public class ScoreManager : NetworkBehaviour
         NetworkVariableWritePermission.Server
     );
 
+    // =====배율이 적용된 최종 오염 점수 (서버가 계산해 모든 클라이언트에 전달, 승패 판정 기준)=====
+    private readonly NetworkVariable<float> _trashContamination = new(
+        0f,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server
+    );
+    private readonly NetworkVariable<float> _boxContamination = new(
+        0f,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server
+    );
+    private readonly NetworkVariable<float> _paintContamination = new(
+        0f,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server
+    );
+
+    // 방장이 설정한 오염도 배율. 서버만 계산에 쓰므로 동기화하지 않는다
+    private float _trashMultiplier = 1f;
+    private float _boxMultiplier = 1f;
+    private float _paintMultiplier = 1f;
+
+    public float TrashContamination => _trashContamination.Value;
+    public float BoxContamination => _boxContamination.Value;
+    public float PaintContamination => _paintContamination.Value;
+    public float TotalContamination => TrashContamination + BoxContamination + PaintContamination;
+    public float MaxContaminationScore => maxContaminationScore;
+
+    /// <summary>목표 총점 대비 현재 오염도. 1 이상이면 목표치에 도달</summary>
+    public float ContaminationRatio => maxContaminationScore > 0f ? TotalContamination / maxContaminationScore : 0f;
+
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -60,9 +97,21 @@ public class ScoreManager : NetworkBehaviour
         _networkTotalBoxCount.OnValueChanged += OnScoreChanged;
         _networkPlacedBoxCount.OnValueChanged += OnScoreChanged;
         _contaminationLevel.OnValueChanged += OnContaminationChanged;
+        _trashContamination.OnValueChanged += OnWeightedScoreChanged;
+        _boxContamination.OnValueChanged += OnWeightedScoreChanged;
+        _paintContamination.OnValueChanged += OnWeightedScoreChanged;
 
         if (IsServer)
         {
+            // RoomSettings는 서버에만 확실히 남아 있으므로 서버가 읽어 둔다
+            if (RoomSettings.Instance != null)
+            {
+                _trashMultiplier = RoomSettings.Instance.TrashContaminationMultiplier.Value;
+                _boxMultiplier = RoomSettings.Instance.BoxContaminationMultiplier.Value;
+                _paintMultiplier = RoomSettings.Instance.PaintContaminationMultiplier.Value;
+            }
+            RecalculateWeightedScores();
+
             // _networkTotalBoxCount.Value = defaultTotalBoxCount;
             // _networkTotalTrashScore.Value = defaultTotalTrashScore;
         }
@@ -77,36 +126,56 @@ public class ScoreManager : NetworkBehaviour
         _networkTotalBoxCount.OnValueChanged -= OnScoreChanged;
         _networkPlacedBoxCount.OnValueChanged -= OnScoreChanged;
         _contaminationLevel.OnValueChanged -= OnContaminationChanged;
+        _trashContamination.OnValueChanged -= OnWeightedScoreChanged;
+        _boxContamination.OnValueChanged -= OnWeightedScoreChanged;
+        _paintContamination.OnValueChanged -= OnWeightedScoreChanged;
     }
     public void InitScoreText()
     {
         UpdateScoreUI();
     }
 
-    // 값이 변경되면 모든 클라이언트에서 이 함수가 실행됨
+    // 원본 수치가 바뀌면 서버가 최종 점수를 다시 계산한다. 클라이언트는 최종 점수가 도착할 때 UI를 갱신
     private void OnScoreChanged(int previousValue, int newValue)
     {
-        UpdateScoreUI();
+        if (IsServer) RecalculateWeightedScores();
     }
     private void OnContaminationChanged(float previousValue, float newValue)
     {
+        if (IsServer) RecalculateWeightedScores();
+    }
+    private void OnWeightedScoreChanged(float previousValue, float newValue)
+    {
         UpdateScoreUI();
     }
+
+    /// <summary>
+    /// 원본 수치에 배율을 곱해 최종 오염 점수를 만든다 (서버 전용).
+    /// </summary>
+    private void RecalculateWeightedScores()
+    {
+        if (!IsServer) return;
+
+        // 1. 미배치 박스 수 = (전체 배치 가능 수 - 현재 배치된 수)
+        int unplacedBoxCount = Mathf.Max(0, _networkTotalBoxCount.Value - _networkPlacedBoxCount.Value);
+
+        // 2. 남은 쓰레기 점수 = (전체 쓰레기 총점 - 청소한 쓰레기 점수)
+        float remainingTrashScore = Mathf.Max(0, _networkTotalTrashScore.Value - _networkCleanedTrashScore.Value);
+
+        // 3. 방장이 설정한 오염도 배율 적용
+        _trashContamination.Value = remainingTrashScore * _trashMultiplier;
+        _boxContamination.Value = unplacedBoxCount * scorePerBox * _boxMultiplier;
+        _paintContamination.Value = _contaminationLevel.Value * _paintMultiplier;
+
+        // 값이 그대로면 OnValueChanged가 안 불리므로 서버 쪽 UI는 직접 갱신
+        UpdateScoreUI();
+    }
+
     private void UpdateScoreUI()
     {
         if (propertyGauge != null)
         {
-            // 1. 미배치 박스 수 = (전체 배치 가능 수 - 현재 배치된 수)
-            int unplacedBoxCount = Mathf.Max(0, _networkTotalBoxCount.Value - _networkPlacedBoxCount.Value);
-
-            // 2. 남은 쓰레기 점수 = (전체 쓰레기 총점 - 청소한 쓰레기 점수)
-            float remainingTrashScore = Mathf.Max(0, _networkTotalTrashScore.Value - _networkCleanedTrashScore.Value);
-
-            propertyGauge.CalculateGaugeValues(
-                remainingTrashScore,
-                unplacedBoxCount,
-                _contaminationLevel.Value
-            );
+            propertyGauge.CalculateGaugeValues(TrashContamination, BoxContamination, PaintContamination, maxContaminationScore);
         }
     }
     /// <summary>
