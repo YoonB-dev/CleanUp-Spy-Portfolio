@@ -172,7 +172,8 @@ public class PlayerMovement : NetworkBehaviour
             return;
         }
 
-        Vector2 input = context.ReadValue<Vector2>();
+        // 막혀 있을 때도 return하지 않고 0을 보내야 키를 떼는 입력이 씹히지 않는다
+        Vector2 input = _gate.CanDo(PlayerAction.Move) ? context.ReadValue<Vector2>() : Vector2.zero;
         _serverMoveInput = input;
         SubmitMoveServerRpc(input);
     }

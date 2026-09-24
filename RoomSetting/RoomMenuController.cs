@@ -21,5 +21,12 @@ public class RoomMenuController : SceneSingleton<RoomMenuController>
 
         Cursor.lockState = isMenuOpen ? CursorLockMode.None : CursorLockMode.Locked;
         Cursor.visible = isMenuOpen;
+
+        // 창이 열려 있는 동안 이동/시점/클릭 등 플레이어 행동을 막는다 (H 키, 채팅, 일시정지는 그대로)
+        var player = LocalPlayerInput.Local;
+        if (player != null && player.TryGetComponent(out PlayerActionGate gate))
+        {
+            gate.SetUIOpen(isMenuOpen);
+        }
     }
 }

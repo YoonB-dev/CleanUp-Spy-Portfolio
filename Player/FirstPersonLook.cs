@@ -28,10 +28,16 @@ public class FirstPersonLook : NetworkBehaviour
     private bool _lookSuspended;
     private float _sensitivity = 0.1f;
     private float _pitchSign = 1f;   // Y축 반전이면 -1
+    private PlayerActionGate _gate;
 
     // 클리핑 확대, 축소용 2개
     private const float ORIGIN_CLIP = 0.3f; // 원래 세팅값 백업용
     private const float NEAR_CLIP = 0.01f; // 카메라가 플레이어 몸체에 너무 가까이 붙었을 때, 카메라가 몸체를 뚫고 들어가는 현상을 방지하기 위해 Near Clip을 최소값으로 설정
+
+    private void Awake()
+    {
+        _gate = PlayerActionGate.GetOrAdd(gameObject);
+    }
 
     public override void OnNetworkSpawn()
     {
@@ -94,6 +100,13 @@ public class FirstPersonLook : NetworkBehaviour
     private void LateUpdate()
     {
         if (!IsOwner || _lookSuspended) return;
+
+        // UI가 열려 있으면 회전하지 않는다. 남은 입력으로 닫자마자 돌지 않게 비워 둔다
+        if (!_gate.CanDo(PlayerAction.Look))
+        {
+            _lookInput = Vector2.zero;
+            return;
+        }
 
         float yawDelta = _lookInput.x * _sensitivity;
         float pitchDelta = _lookInput.y * _sensitivity * _pitchSign;

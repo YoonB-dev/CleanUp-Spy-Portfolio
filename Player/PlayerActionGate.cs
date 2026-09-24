@@ -21,6 +21,8 @@ public enum PlayerAction
     FirePaint,      // 페인트 발사
     SpawnTrash,     // 마피아 쓰레기 생성
     DragObject,     // 드래그 오브젝트 끌기
+    Move,           // 이동
+    Look,           // 마우스 시점 회전
 }
 
 /// <summary>
@@ -37,11 +39,13 @@ public enum PlayerCondition
     PaintGunOut = 1 << 4,   // 4 슬롯 페인트 총을 손에 듦(손 점유)
     Reaching = 1 << 5,      // 잡기 키를 누르는 중(아직 못 잡았어도 손을 뻗고 있음)
     DraggingObject = 1 << 6, // 드래그 오브젝트를 끌고 있음(손 점유)
+    UIOpen = 1 << 7,        // 방 설정 창 등 조작을 막는 UI가 열려 있음(소유자 로컬 값)
 }
 
 /// <summary>
 /// 플레이어 행동의 상호 배타 규칙을 한곳에서 판정한다. <br/>
-/// 상태 소스가 전부 NetworkVariable이라 Owner 선검사와 서버 재검증에 같은 함수를 쓴다.
+/// 상태 소스가 전부 NetworkVariable이라 Owner 선검사와 서버 재검증에 같은 함수를 쓴다. <br/>
+/// 예외로 UIOpen은 소유자 로컬 값이라 서버에서 다른 플레이어를 볼 때는 항상 꺼져 있다. 입력만 막는 용도라 재검증은 필요 없다.
 /// </summary>
 public class PlayerActionGate : MonoBehaviour
 {
@@ -95,12 +99,18 @@ public class PlayerActionGate : MonoBehaviour
         [PlayerAction.SpawnTrash] = new Rule(RESTRAINED | Cond.HoldingItem),
         // 끌기 시작 조건 (이미 끌고 있거나 손에 무언가 들려있을 때는 끌기 시작 불가)
         [PlayerAction.DragObject] = new Rule(RESTRAINED | Cond.HoldingItem | Cond.PaintGunOut),
+
+        // 이동/시점은 UI가 열렸을 때만 막는다 (쓰러짐 등은 PlayerMovement/FirstPersonLook이 따로 처리)
+        [PlayerAction.Move] = new Rule(Cond.UIOpen),
+        [PlayerAction.Look] = new Rule(Cond.UIOpen),
     };
 
     private PlayerKnockdown _knockdown;
     private PlayerGrab _grab;
     private PlayerInventory _inventory;
     private PlayerMovement _movement;
+    private bool _uiOpen;
+
     private void Awake()
     {
         _knockdown = GetComponent<PlayerKnockdown>();
@@ -124,12 +134,33 @@ public class PlayerActionGate : MonoBehaviour
         return targetSlot == PAINT_GUN_SLOT ? PlayerAction.ToggleGun : PlayerAction.ChangeSlot;
     }
 
+    /// <summary>
+    /// 조작을 막는 UI가 열리고 닫힐 때 호출. 켜져 있으면 모든 행동이 막힌다. <br/>
+    /// PlayerInput은 그대로 두므로 UI를 닫는 키, 채팅, 일시정지 메뉴는 계속 동작한다.
+    /// </summary>
+    /// <param name="open">UI가 열렸는지</param>
+    public void SetUIOpen(bool open)
+    {
+        _uiOpen = open;
+
+        // 누르고 있던 방향으로 계속 걸어가지 않도록 이동 입력을 비운다
+        if (open && _movement != null)
+        {
+            _movement.ClearMoveInput();
+        }
+    }
+
     /// <summary>현재 켜져 있는 상태 플래그</summary>
     public Cond CurrentConditions
     {
         get
         {
             Cond conditions = Cond.None;
+
+            if (_uiOpen)
+            {
+                conditions |= Cond.UIOpen;
+            }
 
             if (_knockdown != null && _knockdown.IsDown)
             {
@@ -180,12 +211,19 @@ public class PlayerActionGate : MonoBehaviour
     /// <param name="action">판정할 행동</param>
     public bool CanDo(PlayerAction action)
     {
+        Cond conditions = CurrentConditions;
+
+        // UI가 열려 있으면 규칙과 상관없이 모든 행동을 막는다
+        if ((conditions & Cond.UIOpen) != Cond.None)
+        {
+            return false;
+        }
+
         if (!RULES.TryGetValue(action, out Rule rule))
         {
             return true;
         }
 
-        Cond conditions = CurrentConditions;
         return (conditions & rule.Blocked) == Cond.None
             && (conditions & rule.Required) == rule.Required;
     }
