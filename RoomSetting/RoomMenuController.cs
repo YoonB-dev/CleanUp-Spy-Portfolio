@@ -1,9 +1,11 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 public class RoomMenuController : SceneSingleton<RoomMenuController>
 {
     [SerializeField] private GameObject roomSettingsPanel; // 방 설정 UI 전체가 담긴 부모 오브젝트
     [SerializeField] private GameObject roomBasicPanel; // 기본 UI, 설정 UI가 열리면 닫힘
+    [SerializeField] private Button closeButton; // 마우스로 설정 UI를 닫는 버튼
 
     private bool isMenuOpen = false;
 
@@ -11,11 +13,24 @@ public class RoomMenuController : SceneSingleton<RoomMenuController>
     {
         roomSettingsPanel.SetActive(false);
         roomBasicPanel.SetActive(true);
+
+        if (closeButton != null) closeButton.onClick.AddListener(CloseMenu);
     }
 
-    public void SetMenuOpen()
+    // H 키로 열고 닫는다
+    public void SetMenuOpen() => SetOpen(!isMenuOpen);
+
+    // 닫기 버튼에서 호출. 이미 닫혀 있으면 아무것도 하지 않는다
+    public void CloseMenu()
     {
-        isMenuOpen = !isMenuOpen;
+        Debug.Log("asdasd");
+        if (!isMenuOpen) return;
+        SetOpen(false);
+    }
+
+    private void SetOpen(bool open)
+    {
+        isMenuOpen = open;
         roomSettingsPanel.SetActive(isMenuOpen);
         roomBasicPanel.SetActive(!isMenuOpen);
 
