@@ -17,10 +17,18 @@ public class RoomSettings : NetworkBehaviour
     private const int MIN_PLAY_TIME = 300; // 5분
     private const int MAX_PLAY_TIME = 1800; // 30분
     private const int PLAY_TIME_STEP = 30; // 30초 단위로 증가/감소
-    
+    private const float MIN_CONTAMINATION_MULTIPLIER = 0.5f;
+    private const float MAX_CONTAMINATION_MULTIPLIER = 3f;
+    private const float CONTAMINATION_MULTIPLIER_STEP = 0.25f; // x0.25 단위로 증가/감소
+
     public NetworkVariable<int> PlayerCount = new(MIN_PLAYER_COUNT);
     public NetworkVariable<int> MafiaCount = new(MIN_MAFIA_COUNT);
     public NetworkVariable<int> PlayTimeMinutes = new(MIN_PLAY_TIME);
+
+    // ============ 오염도 관련 세팅 =========== 배율 (1.0 = 기본)
+    public NetworkVariable<float> TrashContaminationMultiplier = new(1f); // 버리는 쓰레기
+    public NetworkVariable<float> BoxContaminationMultiplier = new(1f);   // 정리 안 된 상자
+    public NetworkVariable<float> PaintContaminationMultiplier = new(1f); // 페인트
 
     // 호스트만 아는 값이라 참가자도 친구를 부를 수 있게 공유한다
     public NetworkVariable<FixedString64Bytes> RoomCode = new("");
@@ -56,6 +64,9 @@ public class RoomSettings : NetworkBehaviour
         PlayerCount.OnValueChanged += OnVariableChanged;
         MafiaCount.OnValueChanged += OnVariableChanged;
         PlayTimeMinutes.OnValueChanged += OnVariableChanged;
+        TrashContaminationMultiplier.OnValueChanged += OnMultiplierChanged;
+        BoxContaminationMultiplier.OnValueChanged += OnMultiplierChanged;
+        PaintContaminationMultiplier.OnValueChanged += OnMultiplierChanged;
         RoomCode.OnValueChanged += OnRoomCodeChanged;
 
         // 참여자 목록(등록/해제/Ready 변경 등)이 바뀔 때마다 UI 갱신
@@ -75,6 +86,9 @@ public class RoomSettings : NetworkBehaviour
         PlayerCount.OnValueChanged -= OnVariableChanged;
         MafiaCount.OnValueChanged -= OnVariableChanged;
         PlayTimeMinutes.OnValueChanged -= OnVariableChanged;
+        TrashContaminationMultiplier.OnValueChanged -= OnMultiplierChanged;
+        BoxContaminationMultiplier.OnValueChanged -= OnMultiplierChanged;
+        PaintContaminationMultiplier.OnValueChanged -= OnMultiplierChanged;
         RoomCode.OnValueChanged -= OnRoomCodeChanged;
         AllPlayers.OnListChanged -= OnAllPlayersChanged;
     }
@@ -102,6 +116,11 @@ public class RoomSettings : NetworkBehaviour
             NetworkConnect.Instance.MaxPlayers = PlayerCount.Value;
         }
 
+        RoomUIController.Instance?.Refresh();
+    }
+
+    private void OnMultiplierChanged(float previousValue, float newValue)
+    {
         RoomUIController.Instance?.Refresh();
     }
 
@@ -282,5 +301,35 @@ public class RoomSettings : NetworkBehaviour
         value = MIN_PLAY_TIME + steps * PLAY_TIME_STEP;
 
         PlayTimeMinutes.Value = value;
+    }
+
+    // ===== 오염도 배율 =====
+    public void TrashMultiplierUp() => StepMultiplier(TrashContaminationMultiplier, +1);
+    public void TrashMultiplierDown() => StepMultiplier(TrashContaminationMultiplier, -1);
+    public void SetTrashMultiplier(float value) => SetMultiplier(TrashContaminationMultiplier, value);
+
+    public void BoxMultiplierUp() => StepMultiplier(BoxContaminationMultiplier, +1);
+    public void BoxMultiplierDown() => StepMultiplier(BoxContaminationMultiplier, -1);
+    public void SetBoxMultiplier(float value) => SetMultiplier(BoxContaminationMultiplier, value);
+
+    public void PaintMultiplierUp() => StepMultiplier(PaintContaminationMultiplier, +1);
+    public void PaintMultiplierDown() => StepMultiplier(PaintContaminationMultiplier, -1);
+    public void SetPaintMultiplier(float value) => SetMultiplier(PaintContaminationMultiplier, value);
+
+    private void StepMultiplier(NetworkVariable<float> multiplier, int direction)
+    {
+        SetMultiplier(multiplier, multiplier.Value + direction * CONTAMINATION_MULTIPLIER_STEP);
+    }
+
+    private void SetMultiplier(NetworkVariable<float> multiplier, float value)
+    {
+        if (!IsServer) return;
+
+        value = Mathf.Clamp(value, MIN_CONTAMINATION_MULTIPLIER, MAX_CONTAMINATION_MULTIPLIER);
+
+        // 0.25 단위로 스냅 (float 덧셈이 쌓여 1.2499999 같은 값이 되는 것을 방지)
+        value = Mathf.Round(value / CONTAMINATION_MULTIPLIER_STEP) * CONTAMINATION_MULTIPLIER_STEP;
+
+        multiplier.Value = value;
     }
 }

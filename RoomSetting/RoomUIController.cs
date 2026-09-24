@@ -30,6 +30,22 @@ public class RoomUIController : MonoBehaviour
     [SerializeField] private TMP_Text playTimeText;
     [SerializeField] private TMP_InputField playTimeInputField;
 
+    [Header("오염도 관련 세팅")]
+    [Header("쓰레기 오염도 배율")]
+    [SerializeField] private Button trashMultiplierUpButton;
+    [SerializeField] private Button trashMultiplierDownButton;
+    [SerializeField] private TMP_Text trashMultiplierText;
+
+    [Header("정리 안 된 상자 오염도 배율")]
+    [SerializeField] private Button boxMultiplierUpButton;
+    [SerializeField] private Button boxMultiplierDownButton;
+    [SerializeField] private TMP_Text boxMultiplierText;
+
+    [Header("페인트 오염도 배율")]
+    [SerializeField] private Button paintMultiplierUpButton;
+    [SerializeField] private Button paintMultiplierDownButton;
+    [SerializeField] private TMP_Text paintMultiplierText;
+
     [Header("Ready / 게임 시작")]
     [SerializeField] private Button readyButton;
     [SerializeField] private TMP_Text readyButtonText;
@@ -71,6 +87,13 @@ public class RoomUIController : MonoBehaviour
             // 플레이 시간 증감
             playTimeUpButton.onClick.AddListener(() => RoomSettings.Instance.PlayTimeUp());
             playTimeDownButton.onClick.AddListener(() => RoomSettings.Instance.PlayTimeDown());
+            // 오염도 배율 증감 
+            trashMultiplierUpButton.onClick.AddListener(() => RoomSettings.Instance.TrashMultiplierUp());
+            trashMultiplierDownButton.onClick.AddListener(() => RoomSettings.Instance.TrashMultiplierDown());
+            paintMultiplierUpButton.onClick.AddListener(() => RoomSettings.Instance.PaintMultiplierUp());
+            paintMultiplierDownButton.onClick.AddListener(() => RoomSettings.Instance.PaintMultiplierDown());
+            boxMultiplierUpButton.onClick.AddListener(() => RoomSettings.Instance.BoxMultiplierUp());
+            boxMultiplierDownButton.onClick.AddListener(() => RoomSettings.Instance.BoxMultiplierDown());
 
             // InputField 직접 입력 처리
             if (playerCountInputField != null) playerCountInputField.onEndEdit.AddListener(OnPlayerCountInputChanged);
@@ -137,25 +160,31 @@ public class RoomUIController : MonoBehaviour
     {
         startGameButton.gameObject.SetActive(isHost);
 
-        playerCountUpButton.interactable = isHost;
-        playerCountDownButton.interactable = isHost;
-        mafiaCountUpButton.interactable = isHost;
-        mafiaCountDownButton.interactable = isHost;
-        playTimeUpButton.interactable = isHost;
-        playTimeDownButton.interactable = isHost;
-
         // 호스트 전용 버튼은 호스트가 아니면 비활성화
-        playerCountUpButton.gameObject.SetActive(isHost);
-        playerCountDownButton.gameObject.SetActive(isHost);
-        mafiaCountUpButton.gameObject.SetActive(isHost);
-        mafiaCountDownButton.gameObject.SetActive(isHost);
-        playTimeUpButton.gameObject.SetActive(isHost);
-        playTimeDownButton.gameObject.SetActive(isHost);
+        SetHostOnlyButton(playerCountUpButton, isHost);
+        SetHostOnlyButton(playerCountDownButton, isHost);
+        SetHostOnlyButton(mafiaCountUpButton, isHost);
+        SetHostOnlyButton(mafiaCountDownButton, isHost);
+        SetHostOnlyButton(playTimeUpButton, isHost);
+        SetHostOnlyButton(playTimeDownButton, isHost);
+        SetHostOnlyButton(trashMultiplierUpButton, isHost);
+        SetHostOnlyButton(trashMultiplierDownButton, isHost);
+        SetHostOnlyButton(paintMultiplierUpButton, isHost);
+        SetHostOnlyButton(paintMultiplierDownButton, isHost);
+        SetHostOnlyButton(boxMultiplierUpButton, isHost);
+        SetHostOnlyButton(boxMultiplierDownButton, isHost);
 
         // 인풋 필드 호스트만 조작 가능하도록 설정
         if (playerCountInputField != null) playerCountInputField.interactable = isHost;
         if (mafiaCountInputField != null) mafiaCountInputField.interactable = isHost;
         if (playTimeInputField != null) playTimeInputField.interactable = isHost;
+    }
+
+    private void SetHostOnlyButton(Button button, bool isHost)
+    {
+        if (button == null) return;
+        button.interactable = isHost;
+        button.gameObject.SetActive(isHost);
     }
 
     // RoomSettings / PlayerReady 값이 바뀔 때마다 호출됨
@@ -168,6 +197,10 @@ public class RoomUIController : MonoBehaviour
         // 값은 초 단위라 그대로 찍으면 300 같은 숫자가 나온다
         int playSeconds = RoomSettings.Instance.PlayTimeMinutes.Value;
         playTimeText.text = $"{playSeconds / 60}:{playSeconds % 60:00}";
+
+        if (trashMultiplierText != null) trashMultiplierText.text = FormatMultiplier(RoomSettings.Instance.TrashContaminationMultiplier.Value);
+        if (paintMultiplierText != null) paintMultiplierText.text = FormatMultiplier(RoomSettings.Instance.PaintContaminationMultiplier.Value);
+        if (boxMultiplierText != null) boxMultiplierText.text = FormatMultiplier(RoomSettings.Instance.BoxContaminationMultiplier.Value);
 
         // InputField에 편집 중이 아닐 때만 갱신 (편집 중에 강제로 덮어쓰지 않기 위함)
         if (playerCountInputField != null && !playerCountInputField.isFocused) playerCountInputField.text = RoomSettings.Instance.PlayerCount.Value.ToString();
@@ -254,6 +287,10 @@ public class RoomUIController : MonoBehaviour
             startGameButton.interactable = total == targetCount && readyCount == total;
         }
     }
+
+    // 로케일에 따라 소수점이 쉼표로 찍히지 않도록 InvariantCulture 사용
+    private static string FormatMultiplier(float multiplier) =>
+        $"x{multiplier.ToString("0.0#", System.Globalization.CultureInfo.InvariantCulture)}";
 
     // ======================== InputField 직접 입력 처리 ========================
     private void OnPlayerCountInputChanged(string text)
