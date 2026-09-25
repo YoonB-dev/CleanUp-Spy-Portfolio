@@ -333,12 +333,12 @@ public class PlayerInteraction : NetworkBehaviour
 
     private void UpdateHoveredItem()
     {
-        PickupItem newHoveredItem = null;
+        // 줍기와 같은 탐색 함수를 사용해서 "하이라이트가 뜨면 반드시 주울 수 있음"을 보장
+        PickupItem newHoveredItem = GetTargetPickupItem();
         DraggableObject newHoveredDraggable = null;
 
         if (playerCamera != null && Physics.Raycast(playerCamera.transform.position, playerCamera.transform.forward, out RaycastHit hit, interactDistance))
         {
-            hit.collider.TryGetComponent<PickupItem>(out newHoveredItem);
             hit.collider.TryGetComponent<DraggableObject>(out newHoveredDraggable);
         }
 

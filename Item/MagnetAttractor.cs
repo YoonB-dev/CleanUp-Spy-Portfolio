@@ -3,7 +3,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// 전방 원뿔(Cone) 범위를 대상으로 쓰레기(PickupCategory.Trash)를 끌어당기고 노즐 앞에 고정시키는 흡입기 스크립트.
+/// 전방 원뿔(Cone) 범위를 대상으로 지정한 카테고리(attractTargets)의 아이템을 끌어당기고 노즐 앞에 고정시키는 흡입기 스크립트.
 /// </summary>
 [RequireComponent(typeof(PickupItem))]
 public class MagnetAttractor : NetworkBehaviour, IUsableItem
@@ -44,6 +44,22 @@ public class MagnetAttractor : NetworkBehaviour, IUsableItem
     [Header("Layer Settings")]
     [Tooltip("끌려올 아이템들이 포함된 레이어")]
     [SerializeField] private LayerMask itemLayerMask;
+
+    [Header("Target Settings")]
+    [Tooltip("끌어당길 아이템 카테고리와 카테고리별 힘 배율 (목록에 없는 카테고리는 끌지 않음)")]
+    [SerializeField] private AttractTarget[] attractTargets =
+    {
+        new AttractTarget { category = PickupCategory.Trash, forceMultiplier = 1.0f },
+        new AttractTarget { category = PickupCategory.Box, forceMultiplier = 0.5f },
+    };
+
+    [System.Serializable]
+    private struct AttractTarget
+    {
+        public PickupCategory category;
+        [Tooltip("당기는 힘/고정 힘에 곱해지는 배율 (무거운 물체일수록 낮게)")]
+        public float forceMultiplier;
+    }
 
     // ===== 내부 변수 =====
     private PickupItem _thisPickupItem;
@@ -107,7 +123,7 @@ public class MagnetAttractor : NetworkBehaviour, IUsableItem
 
             if (col.TryGetComponent<PickupItem>(out var targetItem))
             {
-                if (targetItem.Category != PickupCategory.Trash || targetItem.IsHeld) continue;
+                if (targetItem.IsHeld || !TryGetForceMultiplier(targetItem.Category, out float forceMultiplier)) continue;
                 if (!col.TryGetComponent<Rigidbody>(out var targetRb) || targetRb.isKinematic) continue;
 
                 Vector3 toTargetFromOrigin = targetRb.position - origin;
@@ -124,8 +140,8 @@ public class MagnetAttractor : NetworkBehaviour, IUsableItem
                 // 1. 포획 범위(holdRadius) 내부 진입 판정 (원뿔 각도 검사 예외 구역)
                 if (distToHoldTarget <= holdRadius)
                 {
-                    // 목표 위치로 강하게 고정 + 감쇄력 + 중력 상쇄
-                    Vector3 springForce = toHoldTarget * holdSpringForce;
+                    // 목표 위치로 강하게 고정 + 감쇄력 + 중력 상쇄 (중력 상쇄는 배율 없이 그대로 적용해야 떨어지지 않음)
+                    Vector3 springForce = toHoldTarget * (holdSpringForce * forceMultiplier);
                     Vector3 dampForce = -targetRb.linearVelocity * dampening;
 
                     targetRb.AddForce(springForce + dampForce, ForceMode.Acceleration);
@@ -140,7 +156,7 @@ public class MagnetAttractor : NetworkBehaviour, IUsableItem
                 // 3. 끌어당기는 힘 계산
                 float normalizedDistance = Mathf.Clamp01(1.0f - (distFromOrigin / maxDistance));
                 float curveFactor = Mathf.Pow(normalizedDistance, forceExponent);
-                float currentForce = Mathf.Lerp(minForce, maxForce, curveFactor);
+                float currentForce = Mathf.Lerp(minForce, maxForce, curveFactor) * forceMultiplier;
 
                 Vector3 pullDirection = toHoldTarget.normalized;
                 Vector3 forceToApply = pullDirection * currentForce;
@@ -149,6 +165,23 @@ public class MagnetAttractor : NetworkBehaviour, IUsableItem
                 targetRb.AddForce(forceToApply + dampingToApply, ForceMode.Acceleration);
             }
         }
+    }
+
+    /// <summary>
+    /// 끌어당길 대상 카테고리인지 확인하고, 해당 카테고리의 힘 배율을 가져옵니다.
+    /// </summary>
+    private bool TryGetForceMultiplier(PickupCategory category, out float forceMultiplier)
+    {
+        foreach (var target in attractTargets)
+        {
+            if (target.category == category)
+            {
+                forceMultiplier = target.forceMultiplier;
+                return true;
+            }
+        }
+        forceMultiplier = 0f;
+        return false;
     }
 
     private void OnDrawGizmosSelected()
