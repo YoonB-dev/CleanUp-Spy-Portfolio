@@ -135,16 +135,29 @@ public class BoxPlacementPreview : MonoBehaviour
         dynamicPreviewInstance = new GameObject("Dynamic_Placement_Preview");
         dynamicPreviewInstance.layer = LayerMask.NameToLayer("Ignore Raycast");
 
-        // 매쉬 찾기
-        MeshFilter originalMeshFilter = originalObj.GetComponentInChildren<MeshFilter>(true);
-        MeshRenderer originalMeshRenderer = originalObj.GetComponentInChildren<MeshRenderer>(true);
-        
-        if (originalMeshFilter != null && originalMeshRenderer != null)
+        // 자식 메쉬(BoxModel 등)의 위치/회전/스케일 보정값을 루트 기준으로 그대로 옮겨서 복사
+        Transform originalRoot = originalObj.transform;
+        foreach (MeshFilter originalMeshFilter in originalObj.GetComponentsInChildren<MeshFilter>(true))
         {
-            MeshFilter previewFilter = dynamicPreviewInstance.AddComponent<MeshFilter>();
+            if (!originalMeshFilter.TryGetComponent<MeshRenderer>(out var originalMeshRenderer)) continue;
+
+            Transform originalMeshTransform = originalMeshFilter.transform;
+            GameObject previewModel = new GameObject(originalMeshFilter.name);
+            previewModel.layer = dynamicPreviewInstance.layer;
+
+            Transform previewModelTransform = previewModel.transform;
+            previewModelTransform.SetParent(dynamicPreviewInstance.transform, false);
+            previewModelTransform.localPosition = originalRoot.InverseTransformPoint(originalMeshTransform.position);
+            previewModelTransform.localRotation = Quaternion.Inverse(originalRoot.rotation) * originalMeshTransform.rotation;
+            previewModelTransform.localScale = new Vector3(
+                originalMeshTransform.lossyScale.x / originalRoot.lossyScale.x,
+                originalMeshTransform.lossyScale.y / originalRoot.lossyScale.y,
+                originalMeshTransform.lossyScale.z / originalRoot.lossyScale.z);
+
+            MeshFilter previewFilter = previewModel.AddComponent<MeshFilter>();
             previewFilter.sharedMesh = originalMeshFilter.sharedMesh;
 
-            MeshRenderer previewRenderer = dynamicPreviewInstance.AddComponent<MeshRenderer>();
+            MeshRenderer previewRenderer = previewModel.AddComponent<MeshRenderer>();
             Material[] mats = new Material[originalMeshRenderer.sharedMaterials.Length];
             for (int i = 0; i < mats.Length; i++) mats[i] = previewMaterial;
             previewRenderer.sharedMaterials = mats;
