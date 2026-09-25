@@ -423,6 +423,15 @@ public class PlayerInteraction : NetworkBehaviour
         PickupItem currentHeldItem = GetCurrentHeldItem();
         if (!IsHoldingItem() || currentHeldItem == null) return;
 
+        // 손이 닿지 않는 먼 거리에 배치 요청하는 것 방지 (수평 거리 기준, 카메라 위치 오차만큼 여유)
+        Vector3 toRequested = requestedPosition - transform.position;
+        toRequested.y = 0f;
+        if (toRequested.magnitude > _placementPreview.MaxPlacementDistance + 0.5f)
+        {
+            DropHeldItemStandard();
+            return;
+        }
+
         // 클라이언트가 보낸 좌표 근처 발밑에 진짜 바닥 영역(PlacementZone)이 여전히 존재하는지 확인하는 코드임ㅇㅇ
         PlacementZone targetZone = null;
         int zoneLayerMask = LayerMask.GetMask("PlacementZone");
