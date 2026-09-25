@@ -12,6 +12,13 @@ public class PickupItem : NetworkBehaviour
     [SerializeField] private PickupCategory category = PickupCategory.Trash;
     public PickupCategory Category => category;
 
+    [Header("Item Data")]
+    [Tooltip("인벤토리 아이콘 등 아이템 공통 정보. 쓰레기는 TrashObject에 설정된 TrashData가 우선 사용됨")]
+    [SerializeField] private ItemData itemData;
+    private TrashObject _trashObject;
+    /// <summary>쓰레기면 현재 종류의 TrashData, 아니면 프리팹에 연결된 ItemData를 반환</summary>
+    public ItemData ItemData => (_trashObject != null && _trashObject.Data != null) ? _trashObject.Data : itemData;
+
     private Rigidbody _itemRigidbody;
     private Collider itemCollider;
     private PickupHighlight pickupHighlight;
@@ -79,6 +86,7 @@ public class PickupItem : NetworkBehaviour
         _canvases = GetComponentsInChildren<Canvas>(true);
         TryGetComponent(out _pickupListener);
         TryGetComponent(out _networkTransform);
+        TryGetComponent(out _trashObject);
     }
 
     public void SetHighlighted(bool highlighted)

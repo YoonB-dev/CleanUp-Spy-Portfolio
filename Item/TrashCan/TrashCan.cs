@@ -100,7 +100,7 @@ public class TrashCan : NetworkBehaviour
             ScoreManager.Instance?.AddTrashScore(data.score);
 
             // 3. 연출 처리 (서버 -> 모든 클라이언트 RPC 전파)
-            PlayDisposalFXClientRpc(item.transform.position, data.trashID);
+            PlayDisposalFXClientRpc(item.transform.position, data.itemID);
         }
         else
         {
