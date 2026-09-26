@@ -22,6 +22,12 @@ public class TrashCan : NetworkBehaviour
     [Tooltip("같은 아이템을 다시 튕겨내기까지의 대기 시간 (통 안에서 덜덜 떨리는 것 방지)")]
     [SerializeField] private float rejectCooldown = 0.3f;
 
+    [Header("Sound")]
+    [Tooltip("쓰레기를 버릴 때 공통 소리 (TrashData에 cleanSFX가 있으면 그게 우선)")]
+    [SerializeField] private SoundData disposeSound;
+    [Tooltip("쓰레기가 아닌 아이템을 튕겨낼 때 소리")]
+    [SerializeField] private SoundData rejectSound;
+
     // 아이템별 마지막으로 튕겨낸 시간 (서버 전용)
     private readonly Dictionary<PickupItem, float> _lastRejectTime = new Dictionary<PickupItem, float>();
 
@@ -106,6 +112,9 @@ public class TrashCan : NetworkBehaviour
         {
             // TrashData를 못 찾았을 때 예외 처리용 기본 점수
             ScoreManager.Instance?.AddTrashScore(10);
+
+            // 연출은 공통 소리로 처리
+            PlayDisposalFXClientRpc(item.transform.position, string.Empty);
         }
 
         // 4. 네트워크 오브젝트 디스폰
@@ -116,14 +125,23 @@ public class TrashCan : NetworkBehaviour
     }
 
     [ClientRpc]
-    private void PlayDisposalFXClientRpc(Vector3 position, string trashID)
+    private void PlayDisposalFXClientRpc(Vector3 position, string itemID)
     {
-        // 나중에 여기 사운드 넣을 꺼임. -> 쓰레기 처리하느 사운드
+        // 쓰레기 종류별 소리(TrashData.cleanSFX)가 있으면 그걸, 없으면 공통 소리
+        // (쓰레기 오브젝트는 곧 디스폰되므로 itemID로 데이터를 찾음)
+        if (ItemData.TryGetById(itemID, out TrashData data) && data.cleanSFX != null)
+        {
+            SoundManager.Instance?.PlaySFXAt(data.cleanSFX, position);
+        }
+        else
+        {
+            SoundManager.Instance?.PlaySFXAt(disposeSound, position);
+        }
     }
 
     [ClientRpc]
     private void PlayRejectFXClientRpc(Vector3 position)
     {
-        // 나중에 여기 사운드 넣을 꺼임. -> 쓰레기가 아닌 걸 튕겨내는 사운드
+        SoundManager.Instance?.PlaySFXAt(rejectSound, position);
     }
 }

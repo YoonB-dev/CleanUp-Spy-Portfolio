@@ -60,6 +60,7 @@ public class SettingsManager : MonoBehaviour
     public static SettingsManager Existing => _instance;
 
     public GameSettings Settings { get; private set; }
+    public AudioMixer Mixer => mixer;   // SoundManager가 BGM/SFX 그룹을 찾을 때 쓴다
     public AudioMixerGroup VoiceGroup => voiceGroup;
     public InputActionAsset InputActions => inputActions;
 
