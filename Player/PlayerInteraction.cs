@@ -423,10 +423,10 @@ public class PlayerInteraction : NetworkBehaviour
         PickupItem currentHeldItem = GetCurrentHeldItem();
         if (!IsHoldingItem() || currentHeldItem == null) return;
 
-        // 손이 닿지 않는 먼 거리에 배치 요청하는 것 방지 (수평 거리 기준, 카메라 위치 오차만큼 여유)
-        Vector3 toRequested = requestedPosition - transform.position;
-        toRequested.y = 0f;
-        if (toRequested.magnitude > _placementPreview.MaxPlacementDistance + 0.5f)
+        // 손이 닿지 않는 먼 거리에 배치 요청하는 것 방지
+        // 클라이언트 프리뷰와 같은 기준(카메라 → 배치 위치 3D 거리)으로 검사해서 다른 층 구역에 놓는 것도 막는다 (네트워크 지연만큼 여유)
+        Vector3 origin = playerCamera != null ? playerCamera.transform.position : transform.position;
+        if (Vector3.Distance(origin, requestedPosition) > _placementPreview.MaxPlacementDistance + 0.5f)
         {
             DropHeldItemStandard();
             return;

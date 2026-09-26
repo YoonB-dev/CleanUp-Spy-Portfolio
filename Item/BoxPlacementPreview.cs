@@ -212,15 +212,18 @@ public class BoxPlacementPreview : MonoBehaviour
                 aimPoint.y,
                 Mathf.Clamp(aimPoint.z, bounds.min.z + margin, bounds.max.z - margin));
 
-            // 구역에서 너무 먼 곳을 보고 있거나, 손이 닿지 않는 거리면 무시
+            // 구역에서 너무 먼 곳을 보고 있으면 무시
             float offZoneDistance = Vector3.Distance(aimPoint, clampedPoint);
             if (offZoneDistance > zonePlaneSnapRange) continue;
-            if (Vector3.Distance(ray.origin, clampedPoint) > MaxPlacementDistance) continue;
+
+            // 손이 닿지 않는 거리면 무시 (서버 검증과 같은 기준: 카메라 → 스냅된 최종 위치 3D 거리)
+            Vector3 snappedPosition = zone.GetSnappedPosition(clampedPoint);
+            if (Vector3.Distance(ray.origin, snappedPosition) > MaxPlacementDistance) continue;
 
             if (offZoneDistance < bestDistance)
             {
                 bestDistance = offZoneDistance;
-                targetPosition = zone.GetSnappedPosition(clampedPoint);
+                targetPosition = snappedPosition;
                 targetZone = zone;
             }
         }

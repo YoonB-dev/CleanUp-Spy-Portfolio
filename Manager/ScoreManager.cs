@@ -104,6 +104,7 @@ public class ScoreManager : NetworkBehaviour
         if (IsServer)
         {
             // RoomSettings는 서버에만 확실히 남아 있으므로 서버가 읽어 둔다
+            // 배율은 게임 시작 시점의 방 설정으로 고정한다 (배율 변경 UI는 로비에만 있어 게임 중에는 바뀌지 않음)
             if (RoomSettings.Instance != null)
             {
                 _trashMultiplier = RoomSettings.Instance.TrashContaminationMultiplier.Value;
