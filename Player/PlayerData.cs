@@ -1,6 +1,6 @@
 using Steamworks;
-using Steamworks.Data;
 using TMPro;
+using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
 
@@ -19,8 +19,19 @@ public class PlayerData : NetworkBehaviour
         NetworkVariableWritePermission.Server
     );
 
+    private readonly NetworkVariable<FixedString128Bytes> _displayName = new(
+        default,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server
+    );
+
     public ulong SteamId => _steamId.Value;
-    public event System.Action<ulong> SteamIdChanged;
+    public event System.Action DisplayNameChanged;
+
+    public NetworkVariable<int> CleanCount { get; } = new(0, NetworkVariableReadPermission.Owner, NetworkVariableWritePermission.Server);
+    public NetworkVariable<int> TrashCount { get; } = new(0, NetworkVariableReadPermission.Owner, NetworkVariableWritePermission.Server);
+    public NetworkVariable<int> ItemsOrganized { get; } = new(0, NetworkVariableReadPermission.Owner, NetworkVariableWritePermission.Server);
+    public NetworkVariable<int> ItemsMessUp { get; } = new(0, NetworkVariableReadPermission.Owner, NetworkVariableWritePermission.Server);
 
     private void Awake()
     {
@@ -39,18 +50,20 @@ public class PlayerData : NetworkBehaviour
             scoreManager.InitScoreText();
         }
 
-        _steamId.OnValueChanged += OnSteamIdChanged;
+        _displayName.OnValueChanged += OnDisplayNameChanged;
 
         if (IsOwner)
         {
-            // 내 SteamId는 로컬에서만 알 수 있으므로, 서버에 등록 요청
-            SubmitSteamIdServerRpc(SteamClient.SteamId.Value);
+            // 친구가 아닌 플레이어의 닉네임은 Steam이 모르므로 각자 자기 닉네임을 직접 보낸다
+            FixedString128Bytes displayName = default;
+            displayName.CopyFromTruncated(SteamClient.Name);
+            SubmitProfileServerRpc(SteamClient.SteamId.Value, displayName);
         }
 
         // 이미 값이 세팅된 채로 늦게 스폰(중간 참가 등)된 경우 강제 1회 알림
-        if (_steamId.Value != 0)
+        if (_displayName.Value.Length > 0)
         {
-            SteamIdChanged?.Invoke(_steamId.Value);
+            DisplayNameChanged?.Invoke();
         }
 
         if (!IsServer)
@@ -61,7 +74,7 @@ public class PlayerData : NetworkBehaviour
 
     public override void OnNetworkDespawn()
     {
-        _steamId.OnValueChanged -= OnSteamIdChanged;
+        _displayName.OnValueChanged -= OnDisplayNameChanged;
 
         if (!IsServer)
         {
@@ -70,29 +83,33 @@ public class PlayerData : NetworkBehaviour
     }
 
     [ServerRpc]
-    private void SubmitSteamIdServerRpc(ulong steamId)
+    private void SubmitProfileServerRpc(ulong steamId, FixedString128Bytes displayName)
     {
+        // TMP 태그로 남의 화면 글자를 바꾸지 못하게
+        FixedString128Bytes safeName = default;
+        safeName.CopyFromTruncated(displayName.ToString().Replace("<", "&#60;"));
+
         _steamId.Value = steamId;
+        _displayName.Value = safeName;
+        RoomSettings.Instance?.SetPlayerName(OwnerClientId, safeName);
     }
 
-    private void OnSteamIdChanged(ulong previousValue, ulong newValue)
+    private void OnDisplayNameChanged(FixedString128Bytes previousValue, FixedString128Bytes newValue)
     {
-        SteamIdChanged?.Invoke(newValue);
+        DisplayNameChanged?.Invoke();
     }
 
     /// <summary>
-    /// Steam 닉네임을 가져온다. 캐시가 아직 없으면 빈 문자열이 반환될 수 있음.
+    /// Steam 닉네임을 가져온다. 소유자가 아직 보내지 않았으면 빈 문자열이 반환될 수 있음.
     /// </summary>
-    public string GetDisplayName()
+    public string GetDisplayName() => _displayName.Value.ToString();
+
+    public void AddStatsTo(PlayStats stats)
     {
-        if (_steamId.Value == 0) return string.Empty;
-
-        if (_steamId.Value == SteamClient.SteamId.Value)
-        {
-            return SteamClient.Name;
-        }
-
-        return new Friend(_steamId.Value).Name;
+        stats.totalCleanCount += CleanCount.Value;
+        stats.totalTrashCount += TrashCount.Value;
+        stats.totalItemsOrganized += ItemsOrganized.Value;
+        stats.totalItemsMessUp += ItemsMessUp.Value;
     }
 
     public void SetServerSpawnPosition(Vector3 spawnPosition)

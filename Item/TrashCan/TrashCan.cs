@@ -98,6 +98,8 @@ public class TrashCan : NetworkBehaviour
 
     private void ProcessItemDisposal(PickupItem item)
     {
+        if (item.LastHolder != null) item.LastHolder.GetComponent<PlayerData>().CleanCount.Value++;
+
         if (item.TryGetComponent<TrashObject>(out TrashObject trashObj) && trashObj.Data != null)
         {
             TrashData data = trashObj.Data;

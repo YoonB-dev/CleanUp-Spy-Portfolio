@@ -46,9 +46,6 @@ public class RoomSettings : NetworkBehaviour
     {
         if (IsServer)
         {
-            NetworkObject.DestroyWithScene = false;
-            DontDestroyOnLoad(gameObject);
-
             NetworkManager.Singleton.OnClientConnectedCallback += ServerOnClientConnected;
             NetworkManager.Singleton.OnClientDisconnectCallback += ServerOnClientDisconnected;
 
@@ -182,6 +179,22 @@ public class RoomSettings : NetworkBehaviour
                 RoomPlayerInfo info = AllPlayers[i];
                 info.IsReady = isReady;
                 AllPlayers[i] = info; // 인덱서 대입 -> NetworkList가 변경으로 인식하고 동기화 + OnListChanged 발생
+                return;
+            }
+        }
+    }
+
+    public void SetPlayerName(ulong clientId, FixedString128Bytes playerName)
+    {
+        if (!IsServer) return;
+
+        for (int i = 0; i < AllPlayers.Count; i++)
+        {
+            if (AllPlayers[i].ClientId == clientId)
+            {
+                RoomPlayerInfo info = AllPlayers[i];
+                info.PlayerName = playerName;
+                AllPlayers[i] = info;
                 return;
             }
         }

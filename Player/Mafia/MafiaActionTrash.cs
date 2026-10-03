@@ -84,6 +84,7 @@ public class MafiaActionTrash : NetworkBehaviour
             {
                 _serverCoolTime = abilityCoolTime;
                 StartLocalCooldownClientRpc(abilityCoolTime);
+                GetComponent<PlayerData>().TrashCount.Value++;
 
                 // =========================================================
                 // 새로 생성된 쓰레기 점수만큼 전체 쓰레기 점수 가산

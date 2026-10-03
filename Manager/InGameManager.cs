@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class InGameManager : NetworkBehaviour
 {
@@ -8,11 +9,16 @@ public class InGameManager : NetworkBehaviour
 
     [Header("씬 설정")]
     [SerializeField] private string playSceneName = "TestPlayScene"; // 인게임 씬 이름과 정확히 맞출 것
+    [SerializeField] private string lobbySceneName = "LobbyScene";
 
     [Header("스폰 설정")]
     [SerializeField] private GameObject inGamePlayerPrefab; // 실제 조종할 인게임 캐릭터 프리팹
     private readonly HashSet<ulong> loadedClients = new(); // 씬 로드 완료를 보고한 클라이언트 ID를 저장하는 HashSet -> 이게 다 되어야 캐릭터 스폰함.
     private bool _hasSpawnedPlayers; // 일괄 스폰은 한 번만. 스폰 후 이탈 시 재검사로 전원이 중복 스폰되는 것을 막는다
+
+    [Header("승패 설정")]
+    [Tooltip("제한 시간 종료 시 오염도 비율이 이 값 이상이면 마피아 승리")]
+    [SerializeField, Range(0f, 1f)] private float mafiaWinRatio = 0.5f;
 
     private void Awake()
     {
@@ -32,6 +38,7 @@ public class InGameManager : NetworkBehaviour
             NetworkManager.Singleton.SceneManager.OnSceneEvent += ServerOnSceneEvent;
             // 로딩 도중 이탈하면 남은 인원 기준으로 다시 검사해야 대기 상태에 갇히지 않는다
             NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnect;
+            if (GameTimerManager.Instance != null) GameTimerManager.Instance.OnTimerExpired += EndGame;
 
             // 2.호스트를 씬 완료 상태로 간주.
             loadedClients.Add(NetworkManager.ServerClientId);
@@ -48,6 +55,8 @@ public class InGameManager : NetworkBehaviour
             NetworkManager.Singleton.SceneManager.OnSceneEvent -= ServerOnSceneEvent;
             NetworkManager.Singleton.OnClientDisconnectCallback -= OnClientDisconnect;
         }
+
+        if (IsServer && GameTimerManager.Instance != null) GameTimerManager.Instance.OnTimerExpired -= EndGame;
     }
     /// <summary>
     /// 로딩 도중 혹은 로딩 완료 후에 클라이언트가 나갔을 때 실행되는 콜백 함수
@@ -167,5 +176,55 @@ public class InGameManager : NetworkBehaviour
         {
             Debug.LogError("[InGameManager] 씬에 GameTimerManager 인스턴스가 존재하지 않습니다!");
         }
+    }
+
+    private void EndGame()
+    {
+        ScoreManager score = ScoreManager.Instance;
+        float max = score.MaxContaminationScore;
+
+        GameOverClientRpc(score.TrashContamination / max, score.BoxContamination / max, score.PaintContamination / max);
+    }
+
+    public void ReturnToLobby()
+    {
+        if (!IsServer) return;
+        NetworkManager.SceneManager.LoadScene(lobbySceneName, LoadSceneMode.Single);
+    }
+
+    [ClientRpc]
+    private void GameOverClientRpc(float trash, float box, float paint)
+    {
+        PlayerRole winner = trash + box + paint >= mafiaWinRatio ? PlayerRole.Mafia : PlayerRole.Citizen;
+        Debug.Log($"[InGameManager] 게임 종료. 오염도 {trash + box + paint:P0}, 승리: {winner}");
+
+        NetworkObject player = LocalPlayerInput.Local;
+        if (player != null)
+        {
+            PlayerActionGate.GetOrAdd(player.gameObject).SetUIOpen(true);
+            RecordResult(player, winner);
+        }
+
+        InGameUIController.Instance?.ShowResult(winner, trash, box, paint, mafiaWinRatio);
+    }
+
+    private static void RecordResult(NetworkObject player, PlayerRole winner)
+    {
+        PlayStats stats = PlayerSave.Data.stats;
+        stats.totalGamesPlayed++;
+        player.GetComponent<PlayerData>().AddStatsTo(stats);
+
+        if (player.GetComponent<RoleManager>().CurrentRole == PlayerRole.Mafia)
+        {
+            stats.mafiaPlayed++;
+            if (winner == PlayerRole.Mafia) stats.mafiaWins++;
+        }
+        else
+        {
+            stats.citizenPlayed++;
+            if (winner == PlayerRole.Citizen) stats.citizenWins++;
+        }
+
+        PlayerSave.Save();
     }
 }

@@ -12,9 +12,17 @@ public class PlayerMovement : NetworkBehaviour
     private float moveSpeed = 8f;
     private float jumpForce = 2f;
     private float gravity = -9.81f * 2f;
+    private const float FALL_GRAVITY_MULTIPLIER = 1.8f;
+    private const float JUMP_BUFFER_TIME = 0.12f;
+    private const float COYOTE_TIME = 0.1f;
+    private float _jumpRequestedTime = float.NegativeInfinity;
+    private float _lastGroundedTime = float.NegativeInfinity;
     [SerializeField] private LayerMask groundLayer;
     private Vector2 _serverMoveInput;
-    public Vector2 MoveInput => _serverMoveInput;
+    public Vector3 Velocity => characterController.velocity;
+
+    /// <summary>캡슐 바닥과 실제 지면 사이의 틈(월드 기준). 캡슐은 이만큼 떠서 선다</summary>
+    public float SkinWidth => characterController.skinWidth * transform.lossyScale.y;
     // 감전 상태 관련 변수 (테이저건)
     private float _currentSlowFactor = 1.0f;
     private Coroutine _slowCoroutine;
@@ -99,6 +107,11 @@ public class PlayerMovement : NetworkBehaviour
             verticalVelocity = -2f;
         }
 
+        if (grounded)
+        {
+            _lastGroundedTime = Time.time;
+        }
+
         Vector3 velocity;
         if (TryGetGrabbedVelocity(out Vector3 grabbedVelocity))
         {
@@ -116,7 +129,9 @@ public class PlayerMovement : NetworkBehaviour
                 move *= GRAB_HOLD_MOVE_MULTIPLIER;
             }
 
-            verticalVelocity += gravity * Time.deltaTime;
+            TryConsumeJump();
+
+            verticalVelocity += (verticalVelocity < 0f ? gravity * FALL_GRAVITY_MULTIPLIER : gravity) * Time.deltaTime;
             velocity = move + Vector3.up * verticalVelocity;
         }
 
@@ -212,10 +227,19 @@ public class PlayerMovement : NetworkBehaviour
     [ServerRpc]
     private void JumpServerRpc()
     {
-        if (characterController.isGrounded && _gate.CanDo(PlayerAction.Jump))
-        {
-            verticalVelocity = Mathf.Sqrt(jumpForce * -2f * gravity);
-        }
+        _jumpRequestedTime = Time.time;
+    }
+
+    // 착지 직전에 누른 점프와 발판에서 막 떨어진 직후의 점프도 받아 준다
+    private void TryConsumeJump()
+    {
+        if (Time.time - _jumpRequestedTime > JUMP_BUFFER_TIME) return;
+        if (Time.time - _lastGroundedTime > COYOTE_TIME) return;
+        if (!_gate.CanDo(PlayerAction.Jump)) return;
+
+        verticalVelocity = Mathf.Sqrt(jumpForce * -2f * gravity);
+        _jumpRequestedTime = float.NegativeInfinity;
+        _lastGroundedTime = float.NegativeInfinity;
     }
 
     #region 감전 상태 관련 메서드 (테이저건)

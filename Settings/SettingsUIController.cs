@@ -70,7 +70,9 @@ public class SettingsUIController : SceneSingleton<SettingsUIController>
 
     // 창에서 만지는 것은 사본이다. 적용을 눌러야 실제 설정이 된다
     private GameSettings _draft;
+    private VideoSettings _videoDraft;
     private GameSettings Settings => _draft ??= SettingsManager.Instance.Settings.Clone();
+    private VideoSettings Video => _videoDraft ??= SettingsManager.Instance.Video.Clone();
 
     protected override void Awake()
     {
@@ -102,6 +104,7 @@ public class SettingsUIController : SceneSingleton<SettingsUIController>
     public void Open()
     {
         _draft = SettingsManager.Instance.Settings.Clone();
+        _videoDraft = SettingsManager.Instance.Video.Clone();
 
         root.SetActive(true);
         Refresh();
@@ -111,13 +114,15 @@ public class SettingsUIController : SceneSingleton<SettingsUIController>
     public void Close()
     {
         _draft = null;
+        _videoDraft = null;
         root.SetActive(false);
     }
 
     public void Apply()
     {
-        SettingsManager.Instance.Adopt(Settings);
+        SettingsManager.Instance.Adopt(Settings, Video);
         _draft = SettingsManager.Instance.Settings.Clone();
+        _videoDraft = SettingsManager.Instance.Video.Clone();
 
         RefreshApplyState();
     }
@@ -211,14 +216,14 @@ public class SettingsUIController : SceneSingleton<SettingsUIController>
         Bind(fovSlider, value => Settings.fieldOfView = value);
 
         // 그래픽
-        Bind(screenModeDropdown, index => Settings.screenMode = ScreenModes[index]);
-        Bind(resolutionDropdown, index => Settings.resolutionIndex = index);
-        Bind(qualityDropdown, index => Settings.qualityLevel = index);
-        Bind(frameRateDropdown, index => Settings.frameRateLimit = FrameRates[index]);
-        Bind(antiAliasingDropdown, index => Settings.antiAliasing = AntiAliasingSamples[index]);
-        Bind(vSyncToggle, value => Settings.vSync = value);
-        Bind(shadowDistanceSlider, value => Settings.shadowDistance = value);
-        Bind(brightnessSlider, value => Settings.brightness = value);
+        Bind(screenModeDropdown, index => Video.screenMode = ScreenModes[index]);
+        Bind(resolutionDropdown, index => Video.resolutionIndex = index);
+        Bind(qualityDropdown, index => Video.qualityLevel = index);
+        Bind(frameRateDropdown, index => Video.frameRateLimit = FrameRates[index]);
+        Bind(antiAliasingDropdown, index => Video.antiAliasing = AntiAliasingSamples[index]);
+        Bind(vSyncToggle, value => Video.vSync = value);
+        Bind(shadowDistanceSlider, value => Video.shadowDistance = value);
+        Bind(brightnessSlider, value => Video.brightness = value);
 
         // 사운드
         Bind(masterSlider, value => Settings.masterVolume = value);
@@ -230,7 +235,7 @@ public class SettingsUIController : SceneSingleton<SettingsUIController>
 
         // 일반
         Bind(languageDropdown, index => Settings.localeCode = _localeCodes[index]);
-        Bind(uiScaleSlider, value => Settings.uiScale = value);
+        Bind(uiScaleSlider, value => Video.uiScale = value);
     }
 
     private void Bind(Slider slider, System.Action<float> apply)
@@ -283,12 +288,13 @@ public class SettingsUIController : SceneSingleton<SettingsUIController>
     private void ResetToDefault()
     {
         _draft = new GameSettings();
+        _videoDraft = new VideoSettings();
         Refresh();
     }
 
     private void RefreshApplyState()
     {
-        if (applyButton != null) applyButton.interactable = !Settings.SameAs(SettingsManager.Instance.Settings);
+        if (applyButton != null) applyButton.interactable = !Settings.SameAs(SettingsManager.Instance.Settings) || !Video.SameAs(SettingsManager.Instance.Video);
     }
 
     /// <summary>설정 값을 위젯에 다시 채운다</summary>
@@ -297,19 +303,20 @@ public class SettingsUIController : SceneSingleton<SettingsUIController>
         _loading = true;
 
         GameSettings settings = Settings;
+        VideoSettings video = Video;
 
         SetValue(sensitivitySlider, settings.mouseSensitivity);
         SetValue(invertYToggle, settings.invertY);
         SetValue(fovSlider, settings.fieldOfView);
 
-        SetValue(screenModeDropdown, System.Array.IndexOf(ScreenModes, settings.screenMode));
-        SetValue(resolutionDropdown, settings.resolutionIndex >= 0 ? settings.resolutionIndex : CurrentResolutionIndex());
-        SetValue(qualityDropdown, settings.qualityLevel >= 0 ? settings.qualityLevel : QualitySettings.GetQualityLevel());
-        SetValue(frameRateDropdown, System.Array.IndexOf(FrameRates, settings.frameRateLimit));
-        SetValue(antiAliasingDropdown, System.Array.IndexOf(AntiAliasingSamples, settings.antiAliasing));
-        SetValue(vSyncToggle, settings.vSync);
-        SetValue(shadowDistanceSlider, settings.shadowDistance);
-        SetValue(brightnessSlider, settings.brightness);
+        SetValue(screenModeDropdown, System.Array.IndexOf(ScreenModes, video.screenMode));
+        SetValue(resolutionDropdown, video.resolutionIndex >= 0 ? video.resolutionIndex : CurrentResolutionIndex());
+        SetValue(qualityDropdown, video.qualityLevel >= 0 ? video.qualityLevel : QualitySettings.GetQualityLevel());
+        SetValue(frameRateDropdown, System.Array.IndexOf(FrameRates, video.frameRateLimit));
+        SetValue(antiAliasingDropdown, System.Array.IndexOf(AntiAliasingSamples, video.antiAliasing));
+        SetValue(vSyncToggle, video.vSync);
+        SetValue(shadowDistanceSlider, video.shadowDistance);
+        SetValue(brightnessSlider, video.brightness);
 
         SetValue(masterSlider, settings.masterVolume);
         SetValue(bgmSlider, settings.bgmVolume);
@@ -322,7 +329,7 @@ public class SettingsUIController : SceneSingleton<SettingsUIController>
             ? LocalizationSettings.SelectedLocale.Identifier.Code
             : settings.localeCode;
         SetValue(languageDropdown, Mathf.Max(0, _localeCodes.IndexOf(localeCode)));
-        SetValue(uiScaleSlider, settings.uiScale);
+        SetValue(uiScaleSlider, video.uiScale);
 
         _loading = false;
 

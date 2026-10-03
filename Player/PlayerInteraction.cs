@@ -463,6 +463,7 @@ public class PlayerInteraction : NetworkBehaviour
             {
                 currentHeldItem.Drop();
                 placeableBox.PlaceAt(requestedPosition, Quaternion.identity);
+                GetComponent<PlayerData>().ItemsOrganized.Value++;
                 return;
             }
         }

@@ -76,7 +76,8 @@ public class PlaceableBox : NetworkBehaviour, IPickupListener
     public void OnPickedUp()
     {
         if (!IsServer) return;
-        
+        if (IsPlaced) pickupItem.LastHolder.GetComponent<PlayerData>().ItemsMessUp.Value++;
+
         Demolish(isPickedUp: true); // 서버에서 무너짐 처리
     }
 

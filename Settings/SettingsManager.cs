@@ -16,7 +16,6 @@ using UnityEngine.Rendering.Universal;
 public class SettingsManager : MonoBehaviour
 {
     private const string PREFAB_PATH = "SettingsManager";
-    private const string BINDINGS_KEY = "KeyBindings";
 
     [Header("오디오")]
     [SerializeField] private AudioMixer mixer;
@@ -59,8 +58,14 @@ public class SettingsManager : MonoBehaviour
     /// <summary>이미 만들어진 것만 본다. 종료 중에 다시 만들지 않으려는 쪽에서 쓴다</summary>
     public static SettingsManager Existing => _instance;
 
-    public GameSettings Settings { get; private set; }
     public AudioMixer Mixer => mixer;   // SoundManager가 BGM/SFX 그룹을 찾을 때 쓴다
+    public GameSettings Settings
+    {
+        get => PlayerSave.Data.settings;
+        private set => PlayerSave.Data.settings = value;
+    }
+
+    public VideoSettings Video { get; private set; }
     public AudioMixerGroup VoiceGroup => voiceGroup;
     public InputActionAsset InputActions => inputActions;
 
@@ -106,9 +111,13 @@ public class SettingsManager : MonoBehaviour
         _instance = this;
         DontDestroyOnLoad(gameObject);
 
-        Settings = GameSettings.Load();
+        Video = VideoSettings.Load();
         LoadKeyBindings();
-        ApplyAll();
+
+        // 시작할 때 저장까지 하면 클라우드를 아직 못 받은 기기가 기본값으로 덮어쓴다
+        ApplyGraphics();
+        ApplyAudio();
+        ApplyGeneral();
     }
 
     private void OnDestroy()
@@ -117,11 +126,12 @@ public class SettingsManager : MonoBehaviour
     }
 
     /// <summary>설정 창에서 편집한 사본을 받아 실제로 반영한다</summary>
-    public void Adopt(GameSettings settings)
+    public void Adopt(GameSettings settings, VideoSettings video)
     {
-        if (settings == null) return;
+        if (settings == null || video == null) return;
 
         Settings = settings;
+        Video = video;
         ApplyAll();
     }
 
@@ -136,13 +146,15 @@ public class SettingsManager : MonoBehaviour
     /// <summary>값을 바꾼 쪽이 호출한다. 저장까지 함께 한다</summary>
     public void Notify()
     {
-        Settings.Save();
+        PlayerSave.Save();
+        Video.Save();
         Changed?.Invoke();
     }
 
     public void ResetToDefault()
     {
         Settings = new GameSettings();
+        Video = new VideoSettings();
         ResetKeyBindings();
         ApplyAll();
     }
@@ -151,22 +163,22 @@ public class SettingsManager : MonoBehaviour
 
     public void ApplyGraphics()
     {
-        if (Settings.qualityLevel >= 0)
+        if (Video.qualityLevel >= 0)
         {
-            QualitySettings.SetQualityLevel(Mathf.Min(Settings.qualityLevel, QualitySettings.names.Length - 1), true);
+            QualitySettings.SetQualityLevel(Mathf.Min(Video.qualityLevel, QualitySettings.names.Length - 1), true);
         }
 
-        QualitySettings.vSyncCount = Settings.vSync ? 1 : 0;
+        QualitySettings.vSyncCount = Video.vSync ? 1 : 0;
 
         // 수직동기화가 켜져 있으면 targetFrameRate는 무시되므로 굳이 걸지 않는다
-        Application.targetFrameRate = Settings.vSync || Settings.frameRateLimit <= 0 ? -1 : Settings.frameRateLimit;
+        Application.targetFrameRate = Video.vSync || Video.frameRateLimit <= 0 ? -1 : Video.frameRateLimit;
 
         // 품질 프리셋을 바꾸면 URP 에셋이 통째로 갈리므로 세부 값은 그 뒤에 덮는다
         UniversalRenderPipelineAsset urp = CurrentUrpAsset;
         if (urp != null)
         {
-            urp.shadowDistance = Settings.shadowDistance;
-            urp.msaaSampleCount = Mathf.Max(1, Settings.antiAliasing);
+            urp.shadowDistance = Video.shadowDistance;
+            urp.msaaSampleCount = Mathf.Max(1, Video.antiAliasing);
         }
 
         ApplyResolution();
@@ -179,19 +191,19 @@ public class SettingsManager : MonoBehaviour
 
     private void ApplyResolution()
     {
-        if (Settings.resolutionIndex < 0)
+        if (Video.resolutionIndex < 0)
         {
-            if (Screen.fullScreenMode != Settings.screenMode) Screen.fullScreenMode = Settings.screenMode;
+            if (Screen.fullScreenMode != Video.screenMode) Screen.fullScreenMode = Video.screenMode;
             return;
         }
 
-        Resolution target = Resolutions[Mathf.Min(Settings.resolutionIndex, Resolutions.Length - 1)];
-        if (Screen.width == target.width && Screen.height == target.height && Screen.fullScreenMode == Settings.screenMode)
+        Resolution target = Resolutions[Mathf.Min(Video.resolutionIndex, Resolutions.Length - 1)];
+        if (Screen.width == target.width && Screen.height == target.height && Screen.fullScreenMode == Video.screenMode)
         {
             return;
         }
 
-        Screen.SetResolution(target.width, target.height, Settings.screenMode);
+        Screen.SetResolution(target.width, target.height, Video.screenMode);
     }
 
     // URP에는 감마 슬라이더가 없어서 전역 볼륨의 노출값으로 대신한다
@@ -201,7 +213,7 @@ public class SettingsManager : MonoBehaviour
         if (!globalVolumeProfile.TryGet(out ColorAdjustments colorAdjustments)) return;
 
         colorAdjustments.postExposure.overrideState = true;
-        colorAdjustments.postExposure.value = (Settings.brightness - 1f) * 2f;
+        colorAdjustments.postExposure.value = (Video.brightness - 1f) * 2f;
     }
 
     // 사운드 ---------------------------------------------------------------
@@ -246,15 +258,15 @@ public class SettingsManager : MonoBehaviour
     {
         if (inputActions == null) return;
 
-        PlayerPrefs.SetString(BINDINGS_KEY, inputActions.SaveBindingOverridesAsJson());
-        PlayerPrefs.Save();
+        PlayerSave.Data.keyBindings = inputActions.SaveBindingOverridesAsJson();
+        PlayerSave.Save();
     }
 
     public void LoadKeyBindings()
     {
         if (inputActions == null) return;
 
-        string json = PlayerPrefs.GetString(BINDINGS_KEY, string.Empty);
+        string json = PlayerSave.Data.keyBindings;
         if (!string.IsNullOrEmpty(json)) inputActions.LoadBindingOverridesFromJson(json);
     }
 
@@ -263,7 +275,7 @@ public class SettingsManager : MonoBehaviour
         if (inputActions == null) return;
 
         inputActions.RemoveAllBindingOverrides();
-        PlayerPrefs.DeleteKey(BINDINGS_KEY);
-        PlayerPrefs.Save();
+        PlayerSave.Data.keyBindings = "";
+        PlayerSave.Save();
     }
 }

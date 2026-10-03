@@ -27,7 +27,7 @@ public class RoleNameTag : MonoBehaviour
         }
         if (playerData != null)
         {
-            playerData.SteamIdChanged += HandleSteamIdChanged;
+            playerData.DisplayNameChanged += RefreshTag;
         }
 
         RefreshTag();
@@ -41,12 +41,11 @@ public class RoleNameTag : MonoBehaviour
         }
         if (playerData != null)
         {
-            playerData.SteamIdChanged -= HandleSteamIdChanged;
+            playerData.DisplayNameChanged -= RefreshTag;
         }
     }
 
     private void HandleRoleChanged(PlayerRole role) => RefreshTag();
-    private void HandleSteamIdChanged(ulong steamId) => RefreshTag();
 
     private void RefreshTag()
     {

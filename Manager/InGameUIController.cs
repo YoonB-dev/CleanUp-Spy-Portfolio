@@ -2,6 +2,7 @@ using TMPro;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.Localization;
+using UnityEngine.Localization.Components;
 using UnityEngine.Localization.Settings;
 using UnityEngine.UI;
 
@@ -22,6 +23,14 @@ public class InGameUIController : NetworkBehaviour
     [SerializeField] private LocalizedString citizenDesString;
     [SerializeField] private LocalizedString mafiaDesString;
     [SerializeField] private TMP_Text jobDescriptionText;
+
+    [Header("결과")]
+    [SerializeField] private GameObject resultPanel;
+    [SerializeField] private LocalizeStringEvent winnerText;
+    [SerializeField] private LocalizeStringEvent contaminationText;
+    [SerializeField] private LocalizeStringEvent breakdownText;
+    [SerializeField] private GameObject returnButton;
+    [SerializeField] private GameObject waitHostText;
     private object[] _argsBuffer = new object[1]; // 한번만 생성하고 재활용 하기 위한 버파
     private RoleManager _localRole;
 
@@ -146,5 +155,30 @@ public class InGameUIController : NetworkBehaviour
 
         LocalizedString descriptionString = isMafia ? mafiaDesString : citizenDesString;
         jobDescriptionText.text = descriptionString.GetLocalizedString();
+    }
+
+    public void ShowResult(PlayerRole winner, float trash, float box, float paint, float mafiaWinRatio)
+    {
+        bool mafiaWon = winner == PlayerRole.Mafia;
+        winnerText.StringReference.TableEntryReference = mafiaWon ? "result_mafia_win" : "result_citizen_win";
+        winnerText.GetComponent<TMP_Text>().color = mafiaWon ? mafiaColor : citizenColor;
+        SetArgs(contaminationText, Percent(trash + box + paint), Percent(mafiaWinRatio));
+        SetArgs(breakdownText, Percent(trash), Percent(box), Percent(paint));
+
+        jobDisplayCanvas.SetActive(true);
+        returnButton.SetActive(IsServer);
+        waitHostText.SetActive(!IsServer);
+        resultPanel.SetActive(true);
+
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+    }
+
+    private static int Percent(float ratio) => Mathf.RoundToInt(ratio * 100f);
+
+    private static void SetArgs(LocalizeStringEvent text, params object[] args)
+    {
+        text.StringReference.Arguments = args;
+        text.RefreshString();
     }
 }

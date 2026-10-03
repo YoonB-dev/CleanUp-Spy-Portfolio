@@ -7,6 +7,7 @@ public class LobbyFlowManager : NetworkBehaviour
 {
     public static LobbyFlowManager Instance { get; private set; }
     [SerializeField] private GameObject lobbyCharacterPrefab; // 로비에서 보여줄 캐릭터 프리팹
+    [SerializeField] private GameObject roomSettingsPrefab;
     private string lobbySceneName = "LobbyScene"; // 로비 씬 이름
     private string playSceneName = "TestPlayScene";
     public void Awake()
@@ -22,6 +23,12 @@ public class LobbyFlowManager : NetworkBehaviour
         if (IsServer)
         {
             NetworkManager.Singleton.SceneManager.OnSceneEvent += ServerOnLobbySceneEvent;
+
+            // 게임이 끝나고 대기방에 돌아왔을 때도 방 설정을 유지하도록 씬에 두지 않고 한 번만 스폰한다
+            if (RoomSettings.Instance == null)
+            {
+                Instantiate(roomSettingsPrefab).GetComponent<NetworkObject>().Spawn(destroyWithScene: false);
+            }
         }
     }
     public override void OnNetworkDespawn()

@@ -5,7 +5,7 @@ using Unity.Netcode;
 public struct RoomPlayerInfo : INetworkSerializable, IEquatable<RoomPlayerInfo>
 {
     public ulong ClientId;
-    public FixedString32Bytes PlayerName; // string 대신 네트워크 전송에 최적화된 고정 문자열 사용
+    public FixedString128Bytes PlayerName; // string 대신 네트워크 전송에 최적화된 고정 문자열 사용
     public bool IsReady;
 
     // 네트워크 직렬화 (패킷 전송용)

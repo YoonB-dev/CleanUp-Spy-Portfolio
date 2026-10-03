@@ -33,6 +33,7 @@ public class PickupItem : NetworkBehaviour
     [SerializeField] private Vector3 carryAnchorOffset = new Vector3(0f, 0.1f, 0.3f);
     private PlayerInteraction _holder;
     public PlayerInteraction Holder => _holder;
+    public PlayerInteraction LastHolder { get; private set; }
 
     // 들고있는 여부를 확인하기 위함
     private readonly NetworkVariable<bool> _isHeldNetworked = new NetworkVariable<bool>(
@@ -114,6 +115,7 @@ public class PickupItem : NetworkBehaviour
         {
             return;
         }
+        LastHolder = playerInteraction;
         _pickupListener?.OnPickedUp();
         _holder = playerInteraction;
         _isHeldNetworked.Value = true;

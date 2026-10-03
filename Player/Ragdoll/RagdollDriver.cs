@@ -15,7 +15,6 @@ public class RagdollDriver : MonoBehaviour
     private const string RIGHT_FOREARM_BONE_NAME = "Forearm.R";
     private const string LEFT_SHOULDER_BONE_NAME = "Shoulder.L";
     private const string RIGHT_SHOULDER_BONE_NAME = "Shoulder.R";
-    private const float MOVE_INPUT_THRESHOLD = 0.01f;
 
     // 팔 콜라이더와 몸통/머리 콜라이더의 자기 충돌을 명시적으로 무시
     private static readonly string[] ARM_BONE_NAMES =
@@ -75,6 +74,10 @@ public class RagdollDriver : MonoBehaviour
     [SerializeField]
     private float _anchorMaxForce = 3000f;
 
+    [Tooltip("발이 뜨거나 바닥을 파고들 때 골반 높이를 맞추는 보정값. 음수면 내려간다")]
+    [SerializeField]
+    private float _footHeightOffset;
+
     [Header("이동")]
     [FormerlySerializedAs("flipBodyForward")]
     [SerializeField]
@@ -105,6 +108,7 @@ public class RagdollDriver : MonoBehaviour
     private Rigidbody _anchorRigidbody;
     private ConfigurableJoint _anchorJoint;
     private Vector3 _anchorLocalPosition;
+    private float _groundLocalY;
     private Quaternion _anchorLocalRotation = Quaternion.identity;
     private bool _isLimp;
     private bool _isDiving;
@@ -132,6 +136,9 @@ public class RagdollDriver : MonoBehaviour
     /// </summary>
     public Transform PlayerRoot => _playerTransform;
 
+    /// <summary>애니메이션 자세의 다리 높이 비율. 골반을 붙잡는 높이에 곱한다</summary>
+    public float LegReachScale { get; set; } = 1f;
+
     /// <summary>
     /// 에디터 도구용 Hips Transform 설정 및 조회
     /// </summary>
@@ -151,10 +158,10 @@ public class RagdollDriver : MonoBehaviour
     }
 
     /// <summary>
-    /// 현재 이동 입력 여부
+    /// 플레이어가 실제로 움직인 속도 (플레이어 기준 로컬 방향)
     /// </summary>
-    public bool IsMoving =>
-        _playerMovement.MoveInput.sqrMagnitude > MOVE_INPUT_THRESHOLD;
+    public Vector3 LocalVelocity =>
+        _playerTransform.InverseTransformDirection(_playerMovement.Velocity);
 
     /// <summary>
     /// 현재 죽은 척 상태 여부
@@ -586,7 +593,11 @@ public class RagdollDriver : MonoBehaviour
 
         // 앵커를 플레이어 자식으로 매달지 않는다. 부모 추종은 PhysX 속도를 0으로 만들어
         // 조인트 댐퍼가 이동 속도를 제동 -> 이동 중 휘청거림. FixedUpdate에서 MovePosition으로 몬다.
-        _anchorLocalPosition = _playerTransform.InverseTransformPoint(_hips.position);
+        // 발바닥이 실제 지면에 닿는 높이로 골반을 붙잡는다. 낮으면 다리가 바닥에 눌려 무릎이 꺾인다
+        Vector3 ground = _playerTransform.position +
+            Vector3.down * (_playerMovement.StandingGroundOffset + _playerMovement.SkinWidth);
+        _groundLocalY = _playerTransform.InverseTransformPoint(ground).y;
+        _anchorLocalPosition = _playerTransform.InverseTransformPoint(ground + Vector3.up * GetLegReach());
         // 수평 오프셋 제거: yaw 회전 시 앵커가 피벗을 공전해 hips가 밀려나는 것 방지
         _anchorLocalPosition.x = 0f;
         _anchorLocalPosition.z = 0f;
@@ -617,6 +628,18 @@ public class RagdollDriver : MonoBehaviour
         IgnorePlayerCollision();
         IgnoreArmTorsoCollision();
         ApplyAnchorDrives();
+    }
+
+    // 기본 자세에서 골반부터 가장 낮은 콜라이더 바닥까지의 높이
+    private float GetLegReach()
+    {
+        float lowest = _hips.position.y;
+        foreach (Collider bodyCollider in GetComponentsInChildren<Collider>(true))
+        {
+            lowest = Mathf.Min(lowest, bodyCollider.bounds.min.y);
+        }
+
+        return _hips.position.y - lowest;
     }
 
     /// <summary>
@@ -816,7 +839,11 @@ public class RagdollDriver : MonoBehaviour
             return;
         }
 
-        Vector3 targetPosition = _playerTransform.TransformPoint(_anchorLocalPosition);
+        // 무릎을 굽힌 만큼 골반을 낮춰 발이 바닥에 닿게 한다
+        Vector3 anchorLocal = _anchorLocalPosition;
+        anchorLocal.y = _groundLocalY + (_anchorLocalPosition.y - _groundLocalY) * LegReachScale +
+            _footHeightOffset / _playerTransform.lossyScale.y;
+        Vector3 targetPosition = _playerTransform.TransformPoint(anchorLocal);
 
         // 1. 카메라 Pitch(위/아래)에 따른 Hips 앵커의 상하 기울임 각도 계산
         float hipsPitch = _pitch * _hipsPitchRatio;

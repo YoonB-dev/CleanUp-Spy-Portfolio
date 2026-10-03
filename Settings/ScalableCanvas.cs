@@ -31,7 +31,7 @@ public class ScalableCanvas : MonoBehaviour
 
     private void Apply()
     {
-        float scale = SettingsManager.Instance.Settings.uiScale;
+        float scale = SettingsManager.Instance.Video.uiScale;
 
         // 화면 비율을 따라가는 모드에서는 기준 해상도를 줄여야 UI가 커진다
         if (_scaler.uiScaleMode == CanvasScaler.ScaleMode.ConstantPixelSize) _scaler.scaleFactor = _baseScaleFactor * scale;

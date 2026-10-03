@@ -1,36 +1,38 @@
-using UnityEngine;
 using Steamworks;
+using UnityEngine;
 
 public class SteamManager : MonoBehaviour
 {
-    public static bool IsInitialized { get; private set; }
+    private const uint APP_ID = 480;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void Create()
+    {
+        GameObject steam = new GameObject(nameof(SteamManager));
+        DontDestroyOnLoad(steam);
+        steam.AddComponent<SteamManager>();
+    }
 
     private void Awake()
     {
-        DontDestroyOnLoad(gameObject);
-
         try
         {
-            SteamClient.Init(480);
-            IsInitialized = true;
-            Debug.Log($"Steam 초기화 성공. SteamID: {SteamClient.SteamId}");
+            SteamClient.Init(APP_ID, false);
         }
         catch (System.Exception e)
         {
-            Debug.LogError($"Steam 초기화 실패: {e.Message}");
-            IsInitialized = false;
+            Debug.LogWarning($"Steam 초기화 실패: {e.Message}");
         }
-    }
-
-    private void OnApplicationQuit()
-    {
-        if (IsInitialized)
-            SteamClient.Shutdown();
     }
 
     private void Update()
     {
-        if (IsInitialized)
-            SteamClient.RunCallbacks();
+        if (SteamClient.IsValid) SteamClient.RunCallbacks();
+    }
+
+    // NetworkManager가 OnApplicationQuit에서 연결을 닫으므로 그 뒤에 끈다
+    private void OnDestroy()
+    {
+        SteamClient.Shutdown();
     }
 }
