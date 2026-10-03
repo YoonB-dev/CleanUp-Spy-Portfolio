@@ -249,6 +249,12 @@ public class PlayerMovement : NetworkBehaviour
 
         _currentSlowFactor = 1.0f; // 지정된 시간(duration) 지나면 100% 속도로 원상 복구
         _slowCoroutine = null;
+
+        // 감전이 풀리면 몸에 박혀 있던 테이저 탄도 함께 제거
+        if (TryGetComponent<PlayerTaserStuck>(out var stuck))
+        {
+            stuck.ClearServer();
+        }
     }
     #endregion
 

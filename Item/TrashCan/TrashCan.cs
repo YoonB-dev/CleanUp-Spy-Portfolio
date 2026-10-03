@@ -120,7 +120,27 @@ public class TrashCan : NetworkBehaviour
         // 4. 네트워크 오브젝트 디스폰
         if (item.NetworkObject != null && item.NetworkObject.IsSpawned)
         {
-            item.NetworkObject.Despawn(true);
+            if (item.NetworkObject.InScenePlaced)
+            {
+                // 씬 배치 오브젝트는 파괴하면 NGO 씬 관리가 꼬이므로 디스폰 후 비활성화만 한다.
+                // Despawn(false)는 클라 쪽을 숨기지 않으니 디스폰 메시지보다 먼저 숨김 RPC를 보낸다.
+                HideSceneItemClientRpc(item.NetworkObject);
+                item.NetworkObject.Despawn(false);
+                item.gameObject.SetActive(false);
+            }
+            else
+            {
+                item.NetworkObject.Despawn(true);
+            }
+        }
+    }
+
+    [ClientRpc]
+    private void HideSceneItemClientRpc(NetworkObjectReference itemRef)
+    {
+        if (itemRef.TryGet(out NetworkObject itemObj))
+        {
+            itemObj.gameObject.SetActive(false);
         }
     }
 

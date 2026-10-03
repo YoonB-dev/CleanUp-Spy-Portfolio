@@ -39,6 +39,20 @@ public class RagdollNetworkSync : NetworkBehaviour
     /// </summary>
     public RagdollPoser Poser => _ragdollPoser;
 
+    /// <summary>동기화 대상 본 개수. 인덱스는 모든 클라에서 동일하다.</summary>
+    public int BoneCount => BONE_COUNT;
+
+    /// <summary>동기화 인덱스로 본 조회. 바인딩 전이거나 못 찾은 본이면 null</summary>
+    public Transform GetBone(int index)
+    {
+        if (_bones == null || index < 0 || index >= _bones.Length)
+        {
+            return null;
+        }
+
+        return _bones[index];
+    }
+
     public void BindRagdoll(Transform ragdollRoot)
     {
         _bones = CollectBones(ragdollRoot);

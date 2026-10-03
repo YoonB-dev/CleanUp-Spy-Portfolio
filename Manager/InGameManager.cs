@@ -12,6 +12,7 @@ public class InGameManager : NetworkBehaviour
     [Header("스폰 설정")]
     [SerializeField] private GameObject inGamePlayerPrefab; // 실제 조종할 인게임 캐릭터 프리팹
     private readonly HashSet<ulong> loadedClients = new(); // 씬 로드 완료를 보고한 클라이언트 ID를 저장하는 HashSet -> 이게 다 되어야 캐릭터 스폰함.
+    private bool _hasSpawnedPlayers; // 일괄 스폰은 한 번만. 스폰 후 이탈 시 재검사로 전원이 중복 스폰되는 것을 막는다
 
     private void Awake()
     {
@@ -29,6 +30,8 @@ public class InGameManager : NetworkBehaviour
         {
             // 1. 나중에 로드를 완료할 클라이언트들을 위해 이벤트를 등록합니다.
             NetworkManager.Singleton.SceneManager.OnSceneEvent += ServerOnSceneEvent;
+            // 로딩 도중 이탈하면 남은 인원 기준으로 다시 검사해야 대기 상태에 갇히지 않는다
+            NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnect;
 
             // 2.호스트를 씬 완료 상태로 간주.
             loadedClients.Add(NetworkManager.ServerClientId);
@@ -92,7 +95,7 @@ public class InGameManager : NetworkBehaviour
     /// </summary>
     private void CheckAndSpawnAllPlayers()
     {
-        if (!IsServer) return;
+        if (!IsServer || _hasSpawnedPlayers) return;
 
         // 1. 방 설정(RoomSettings)에 등록된 전체 인원 수 가져오기
         if (RoomSettings.Instance == null)
@@ -117,7 +120,9 @@ public class InGameManager : NetworkBehaviour
         Debug.Log("[InGameManager] 모든 플레이어 로딩 완료! 일괄 스폰을 시작합니다.");
 
         // 더 이상 중복 로딩 감지 및 스폰 처리가 일어나는 것을 막기 위해 이벤트를 꺼줍니다.
+        _hasSpawnedPlayers = true;
         NetworkManager.Singleton.SceneManager.OnSceneEvent -= ServerOnSceneEvent;
+        NetworkManager.Singleton.OnClientDisconnectCallback -= OnClientDisconnect;
 
         // 목록에 쌓인 모두를 스폰해 줍니다.
         foreach (ulong clientId in loadedClients)

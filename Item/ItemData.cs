@@ -18,6 +18,10 @@ public class ItemData : ScriptableObject
     [Tooltip("인벤토리 슬롯에 표시될 아이콘")]
     public Sprite icon;
 
+    [Header("Sound")]
+    [Tooltip("펀치 등으로 맞았을 때 소리 (오브젝트에 ImpactSound 컴포넌트가 있으면 그게 우선)")]
+    public SoundData hitSound;
+
     // 로드된 ItemData를 itemID로 찾기 위한 목록 (에셋이 로드될 때 OnEnable에서 등록됨)
     private static readonly Dictionary<string, ItemData> Registry = new Dictionary<string, ItemData>();
 

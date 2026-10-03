@@ -288,6 +288,20 @@ public class PlayerInteraction : NetworkBehaviour
         }
     }
 
+    /// <summary>
+    /// 끌던 오브젝트의 잡기가 풀렸을 때 DraggableObject가 호출한다 (직접 놓은 경우 + 서버가 거리 초과로 강제 해제한 경우). <br/>
+    /// 강제 해제 시 소유자에게 _activeDragableObject가 남아 있으면 다음 줍기 입력이 '놓기'로 헛돌기 때문에 여기서 정리한다
+    /// </summary>
+    public void OnDragReleased(DraggableObject draggable)
+    {
+        if (_activeDragableObject == draggable)
+        {
+            _activeDragableObject = null;
+        }
+
+        GetComponent<PlayerMovement>()?.SetDraggleObject(null);
+    }
+
     [ServerRpc]
     public void TryPickupServerRpc(NetworkObjectReference pickupReference)
     {

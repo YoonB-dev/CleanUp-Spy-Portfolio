@@ -1,7 +1,9 @@
+using System.Collections;
 using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.Serialization;
 
 /// <summary>
 /// 펀치 입력(H키)의 좌우 교대, 타이밍, 타격 판정을 관리 (서버 권위). <br/>
@@ -41,6 +43,20 @@ public class PlayerPunch : NetworkBehaviour
     [Tooltip("맞은 플레이어가 날아가며 도는 회전 속도(도/초). 스윙 손 방향으로 돈다")]
     [SerializeField]
     private float _knockbackSpin = 360f;
+
+    [Header("사운드")]
+    [Tooltip("팔을 휘두를 때 바람 소리. 감는 동작이 끝나고 주먹이 나가는 순간 재생 (헛방이어도 재생)")]
+    [SerializeField]
+    private SoundData _swingSound;
+
+    [Tooltip("플레이어를 때렸을 때 소리")]
+    [SerializeField]
+    private SoundData _playerHitSound;
+
+    [Tooltip("물체를 때렸을 때 기본 소리. 물체에 ImpactSound나 ItemData.hitSound가 있으면 그게 우선 (비워두면 설정 안 된 물체는 무음)")]
+    [SerializeField]
+    [FormerlySerializedAs("_objectHitSound")]
+    private SoundData _defaultObjectHitSound;
 
     // 넉백 옆방향 각도
     private const float LAUNCH_SIDE_ANGLE = 70f;
@@ -182,6 +198,31 @@ public class PlayerPunch : NetworkBehaviour
         _isLeftHand = !_isLeftHand;
         _punchStartTime = Time.time;
         _punchId++;
+
+        PlaySwingSoundClientRpc();
+    }
+
+    /// <summary>
+    /// 펀치 시작을 알리면 각 클라이언트가 감는 시간만큼 기다렸다가 휘두르는 소리를 낸다.
+    /// (팔 자세도 서버의 펀치 시작 시각 기준이라 소리와 동작 타이밍이 맞는다)
+    /// </summary>
+    [ClientRpc]
+    private void PlaySwingSoundClientRpc()
+    {
+        if (_swingSound == null)
+        {
+            return;
+        }
+
+        StartCoroutine(PlaySwingSoundAfterWindup());
+    }
+
+    private IEnumerator PlaySwingSoundAfterWindup()
+    {
+        yield return new WaitForSeconds(WINDUP_DURATION);
+
+        // 기다리는 동안 이동했을 수 있으므로 재생 시점의 위치 사용
+        SoundManager.Instance?.PlaySFXAt(_swingSound, transform.position);
     }
 
     /// <summary>
@@ -210,6 +251,10 @@ public class PlayerPunch : NetworkBehaviour
         PlayerKnockdown target = null;
         float targetSqr = float.PositiveInfinity;
 
+        // 소리는 주먹에 가장 가까운 물체 하나만 (여러 개가 동시에 울리면 시끄러움)
+        Rigidbody closestObject = null;
+        float closestObjectSqr = float.PositiveInfinity;
+
         for (int i = 0; i < count; i++)
         {
             Collider hit = _hitBuffer[i];
@@ -233,7 +278,18 @@ public class PlayerPunch : NetworkBehaviour
                 continue;
             }
 
-            didHit |= TryPushObject(hit);
+            if (!TryPushObject(hit))
+            {
+                continue;
+            }
+            didHit = true;
+
+            float objectSqr = hit.bounds.SqrDistance(fist);
+            if (objectSqr < closestObjectSqr)
+            {
+                closestObjectSqr = objectSqr;
+                closestObject = hit.attachedRigidbody;
+            }
         }
 
         if (target != null)
@@ -246,7 +302,39 @@ public class PlayerPunch : NetworkBehaviour
         if (didHit)
         {
             _hitPunchId = _punchId;
+            ServerNotifyHitSound(fist, target != null, closestObject);
         }
+    }
+
+    /// <summary>
+    /// 타격 판정은 서버에서만 하므로 모든 클라이언트에 소리를 알린다 (한 펀치에 한 번). [서버 전용] <br/>
+    /// 플레이어를 맞혔으면 플레이어 타격음, 아니면 맞은 물체의 소리(물체 쪽 설정)를 재생한다.
+    /// </summary>
+    private void ServerNotifyHitSound(Vector3 fist, bool hitPlayer, Rigidbody closestObject)
+    {
+        if (hitPlayer)
+        {
+            PlayPlayerHitSoundClientRpc(fist);
+            return;
+        }
+
+        // 물체 소리는 클라이언트가 그 물체에서 직접 찾도록 참조만 보낸다 (NetworkObject가 없으면 기본 소리)
+        NetworkObject hitNetworkObject = closestObject != null ? closestObject.GetComponentInParent<NetworkObject>() : null;
+        bool hasObject = hitNetworkObject != null && hitNetworkObject.IsSpawned;
+        PlayObjectHitSoundClientRpc(fist, hasObject ? hitNetworkObject : default(NetworkObjectReference), hasObject);
+    }
+
+    [ClientRpc]
+    private void PlayPlayerHitSoundClientRpc(Vector3 position)
+    {
+        SoundManager.Instance?.PlaySFXAt(_playerHitSound, position);
+    }
+
+    [ClientRpc]
+    private void PlayObjectHitSoundClientRpc(Vector3 position, NetworkObjectReference hitObject, bool hasObject)
+    {
+        GameObject target = hasObject && hitObject.TryGet(out NetworkObject networkObject) ? networkObject.gameObject : null;
+        SoundManager.Instance?.PlaySFXAt(ImpactSound.Resolve(target, _defaultObjectHitSound), position);
     }
 
     // 물체 하나를 밀어낸다. 이미 민 물체(콜라이더 여러 개)는 건너뛴다

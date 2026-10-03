@@ -60,6 +60,12 @@ public class TaserBullet : NetworkBehaviour
                 movement.ApplySlowServer(slowDuration, slowFactor);
             }
 
+            // 맞은 지점에서 가장 가까운 본에 탄이 박힌 연출 (감전이 풀리면 PlayerMovement가 제거)
+            if (targetPlayer.TryGetComponent<PlayerTaserStuck>(out var stuck))
+            {
+                stuck.AttachServer(other.ClosestPoint(transform.position), transform.rotation);
+            }
+
             // 총알 제거
             if (NetworkObject != null && NetworkObject.IsSpawned)
             {

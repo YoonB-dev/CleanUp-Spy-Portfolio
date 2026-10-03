@@ -66,10 +66,11 @@ public class SoundManager : PersistentSingleton<SoundManager>
     }
 
     /// <summary>월드 위치에서(3D) 재생합니다. 거리에 따라 작아집니다</summary>
-    public void PlaySFXAt(SoundData sfx, Vector3 position)
+    /// <param name="volumeScale">SoundData 볼륨에 곱할 배율 (발소리처럼 속도에 따라 크기를 바꿀 때 등). 최종 볼륨은 1을 넘지 않음</param>
+    public void PlaySFXAt(SoundData sfx, Vector3 position, float volumeScale = 1f)
     {
         if (sfx == null) return;
-        _sfx.Play(sfx.GetRandomClip(), sfx.Volume, sfx.GetRandomPitch(), position, sfx.MinDistance, sfx.MaxDistance);
+        _sfx.Play(sfx.GetRandomClip(), Mathf.Clamp01(sfx.Volume * volumeScale), sfx.GetRandomPitch(), position, sfx.MinDistance, sfx.MaxDistance);
     }
 
     public void PlaySFXAt(AudioClip clip, Vector3 position, float volume = 1f)

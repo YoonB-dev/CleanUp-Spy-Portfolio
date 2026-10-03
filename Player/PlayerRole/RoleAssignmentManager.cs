@@ -10,6 +10,9 @@ public class RoleAssignmentManager : NetworkBehaviour
     // TODO: 임시 테스트용. 켜져 있으면 들어오는 플레이어를 전부 바로 마피아로 만든다. 테스트 끝나면 제거할 것
     [SerializeField] private bool debugForceAllMafia = true;
 
+    // 무작위 배정은 한 판에 한 번만. 이후 등록되는 플레이어 때문에 전원 역할이 다시 뽑히지 않게 한다
+    private bool _rolesAssigned;
+
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -36,6 +39,13 @@ public class RoleAssignmentManager : NetworkBehaviour
             if (debugForceAllMafia)
             {
                 ForceAssignRole(roleManager.OwnerClientId, PlayerRole.Mafia);
+                return;
+            }
+
+            // 배정이 끝난 뒤 들어온 플레이어는 기존 배정을 건드리지 않고 시민으로만 둔다
+            if (_rolesAssigned)
+            {
+                roleManager.AssignRole(PlayerRole.Citizen);
                 return;
             }
 
@@ -73,6 +83,7 @@ public class RoleAssignmentManager : NetworkBehaviour
         }
 
         Debug.Log("[RoleAssignmentManager] 모든 플레이어가 등록되었습니다. 무작위 직업 배정을 시작합니다.");
+        _rolesAssigned = true;
 
         // 2. 먼저 모든 플레이어를 '시민(Citizen)'으로 초기화합니다.
         foreach (var p in registeredPlayers)
