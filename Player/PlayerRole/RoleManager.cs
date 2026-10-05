@@ -22,6 +22,7 @@ public class RoleManager : NetworkBehaviour
         if (IsServer)
         {
             RoleAssignmentManager.Instance?.RegisterPlayer(this);
+            Debug.Log($"Player {OwnerClientId} registered for role assignment.");
         }
 
         if (IsLocalPlayer)

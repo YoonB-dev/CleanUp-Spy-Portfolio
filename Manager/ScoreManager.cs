@@ -16,6 +16,8 @@ public class ScoreManager : NetworkBehaviour
     [SerializeField] private float maxContaminationScore = 1000f;
     [Tooltip("배치되지 않은 박스 1개당 환산 점수")]
     [SerializeField] private float scorePerBox = 50f;
+    [Tooltip("페인트가 칠해진 면적 1m²당 환산 점수. 어느 표면이든 같은 면적이면 같은 점수")]
+    [SerializeField] private float paintScorePerSquareMeter = 10f;
 
     // =====전체 쓰레기 점수 (네트워크 동기화 필요 시 사용)=====
     private readonly NetworkVariable<int> _networkTotalTrashScore = new(
@@ -292,20 +294,15 @@ public class ScoreManager : NetworkBehaviour
         if (!IsServer) return;
         if (PaintSurfaceManager.Instance == null) return;
 
-        float sumPercent = 0f;
-        int count = 0;
-
+        // 표면별 비율의 평균을 쓰면 큰 바닥은 아무리 칠해도 오르지 않으므로, 실제로 칠해진 면적의 합으로 점수를 매긴다
+        float totalPaintedArea = 0f;
         foreach (var surface in PaintSurfaceManager.Instance.AllSurfaces)
         {
-            sumPercent += surface.ContaminationPercent;
-            count++;
+            totalPaintedArea += surface.PaintedArea;
         }
 
-        if (count == 0) return;
-
-        float averageContamination = sumPercent / count;
+        float paintScore = totalPaintedArea * paintScorePerSquareMeter;
         // 소수점 2자리로 반올림해서 동기화 (불필요한 NetworkVariable 갱신도 줄어듦)
-        averageContamination = Mathf.Round(averageContamination * 100f) / 100f;
-        _contaminationLevel.Value = Mathf.Clamp(averageContamination, 0f, 100f) * 100; // 페인트의 점수를 확산
+        _contaminationLevel.Value = Mathf.Round(paintScore * 100f) / 100f;
     }
 }

@@ -12,7 +12,8 @@ public class PaintCleaner : NetworkBehaviour
     [Header("Settings")]
     [SerializeField] private float cleanRange = 3f;
     [SerializeField] private float cleanRate = 0.1f;
-    [SerializeField] private float brushRadius = 0.08f;
+    [Tooltip("지우개 반경 (미터, 월드 기준). 어떤 표면이든 같은 실제 크기로 지워진다")]
+    [SerializeField] private float brushRadius = 0.3f;
     [SerializeField] private LayerMask paintableLayers;
 
     private PickupItem _pickupItem;
@@ -82,14 +83,12 @@ public class PaintCleaner : NetworkBehaviour
         var paintable = hit.collider.GetComponent<PaintableSurface>();
         if (paintable == null) return;
 
-        Vector2 uv = hit.textureCoord;
-
-        // 내 주인의 컴포넌트 정보와 함께 서버에 청소 요청
-        RequestCleanServerRpc(paintable.SurfaceId, uv, brushRadius);
+        // 브러시는 월드 좌표 기준으로 그리므로 맞은 지점(월드)을 보낸다
+        RequestCleanServerRpc(paintable.SurfaceId, hit.point, brushRadius);
     }
 
     [ServerRpc]
-    private void RequestCleanServerRpc(int surfaceId, Vector2 uv, float radius, ServerRpcParams rpcParams = default)
+    private void RequestCleanServerRpc(int surfaceId, Vector3 point, float radius, ServerRpcParams rpcParams = default)
     {
         if (!IsServer) return;
 
@@ -102,12 +101,12 @@ public class PaintCleaner : NetworkBehaviour
         }
         if (holder.Inventory != null && holder.Inventory.CurrentSlot == 4) return;
 
-        ApplyCleanClientRpc(surfaceId, uv, radius);
+        ApplyCleanClientRpc(surfaceId, point, radius);
     }
 
     [ClientRpc]
-    private void ApplyCleanClientRpc(int surfaceId, Vector2 uv, float radius)
+    private void ApplyCleanClientRpc(int surfaceId, Vector3 point, float radius)
     {
-        PaintSurfaceManager.Instance.DrawAt(surfaceId, uv, radius, isPaint: false);
+        PaintSurfaceManager.Instance.DrawAt(surfaceId, point, radius, isPaint: false);
     }
 }

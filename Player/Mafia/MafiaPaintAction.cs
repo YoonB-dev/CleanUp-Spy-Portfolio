@@ -15,8 +15,8 @@ public class MafiaPaintAction : NetworkBehaviour
     [Header("Settings")]
     [SerializeField] private float fireRange = 5;
     [SerializeField] private float fireRate = 0.01f;
-    [Tooltip("브러시 반경 (표면 UV 기준, 0~1 사이 값)")]
-    [SerializeField] private float brushRadius = 0.02f;
+    [Tooltip("브러시 반경 (미터, 월드 기준). 어떤 표면이든 같은 실제 크기로 칠해진다")]
+    [SerializeField] private float brushRadius = 0.2f;
     [SerializeField] private LayerMask paintableLayers;
 
     [Header("Paint Gauge Settings")]
@@ -265,12 +265,12 @@ public class MafiaPaintAction : NetworkBehaviour
         var paintable = hit.collider.GetComponent<PaintableSurface>();
         if (paintable == null) return;
 
-        Vector2 uv = hit.textureCoord;
-        RequestPaintServerRpc(paintable.SurfaceId, uv, brushRadius);
+        // 브러시는 월드 좌표 기준으로 그리므로 맞은 지점(월드)을 보낸다
+        RequestPaintServerRpc(paintable.SurfaceId, hit.point, brushRadius);
     }
 
     [ServerRpc]
-    private void RequestPaintServerRpc(int surfaceId, Vector2 uv, float radius)
+    private void RequestPaintServerRpc(int surfaceId, Vector3 point, float radius)
     {
         // 총을 꺼낸 마피아만 칠할 수 있음(치트 방어)
         if (_roleManager == null || _roleManager.CurrentRole != PlayerRole.Mafia) return;
@@ -285,13 +285,13 @@ public class MafiaPaintAction : NetworkBehaviour
         if (_inventory == null || _inventory.CurrentSlot != PlayerActionGate.PAINT_GUN_SLOT || !_isFiring) return;
 
         // 모든 검증 통과 시 클라이언트에 그리기 전파
-        ApplyPaintClientRpc(surfaceId, uv, radius);
+        ApplyPaintClientRpc(surfaceId, point, radius);
     }
 
     [ClientRpc]
-    private void ApplyPaintClientRpc(int surfaceId, Vector2 uv, float radius)
+    private void ApplyPaintClientRpc(int surfaceId, Vector3 point, float radius)
     {
-        PaintSurfaceManager.Instance.DrawAt(surfaceId, uv, radius, isPaint: true);
+        PaintSurfaceManager.Instance.DrawAt(surfaceId, point, radius, isPaint: true);
     }
 
     private void OnPaintValueChanged(float previousValue, float newValue)

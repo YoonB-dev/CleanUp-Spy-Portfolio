@@ -5,7 +5,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 
 /// <summary>
-/// 씬 내 모든 PaintableSurface를 등록/관리하며, 실제 브러시(Blit) 연산을 수행하는 로컬 싱글톤.
+/// 씬 내 모든 PaintableSurface를 등록/관리하며, 실제 브러시 연산을 수행하는 로컬 싱글톤.
 /// 네트워크 오브젝트가 아님 - 각 클라이언트가 자기 로컬 인스턴스를 가지고 자기 화면만 그림.
 /// </summary>
 public class PaintSurfaceManager : MonoBehaviour
@@ -15,11 +15,24 @@ public class PaintSurfaceManager : MonoBehaviour
     [Header("Brush")]
     [SerializeField] private Shader brushShader; // Hidden/PaintBrush 셰이더 할당
 
+    private static readonly int BrushPosId = Shader.PropertyToID("_BrushPos");
+    private static readonly int BrushRadiusId = Shader.PropertyToID("_BrushRadius");
+    private static readonly int BrushValueId = Shader.PropertyToID("_BrushValue");
+
+    private const int BRUSH_PASS = 0;
+    private const int AREA_PASS = 1;
+
+    // 픽셀당 면적 측정용 임시 텍스처 크기. 평균값만 필요하므로 표면 해상도보다 작아도 충분
+    private const int AREA_MAP_SIZE = 512;
+
+    // 칠해진 면적이 이보다 작으면(눈에 안 보이는 잔여 얼룩) 0으로 취급 (m²)
+    private const float MIN_PAINTED_AREA = 0.01f;
+
     private Material _brushMaterial;
+    private CommandBuffer _brushCommands;
     private readonly Dictionary<int, PaintableSurface> _surfaces = new();
     private readonly HashSet<int> _readbackInFlight = new(); // 표면별로 이미 읽기 오쳥이 진행 중인지 추적.
     public IEnumerable<PaintableSurface> AllSurfaces => _surfaces.Values;
-    private const float CONTAMINATION_THRES_HOLD = 0.5f;
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -35,6 +48,16 @@ public class PaintSurfaceManager : MonoBehaviour
             return;
         }
         _brushMaterial = new Material(brushShader);
+        _brushCommands = new CommandBuffer { name = "PaintBrush" };
+    }
+
+    private void OnDestroy()
+    {
+        _brushCommands?.Release();
+        if (_brushMaterial != null)
+        {
+            Destroy(_brushMaterial);
+        }
     }
 
     public void Register(int id, PaintableSurface surface)
@@ -44,6 +67,69 @@ public class PaintSurfaceManager : MonoBehaviour
             Debug.LogWarning($"SurfaceId {id}가 중복 등록되었습니다: {surface.name}");
         }
         _surfaces[id] = surface;
+
+        MeasureAreaPerPixel(surface);
+    }
+
+    /// <summary>
+    /// 페인트 마스크 1픽셀이 덮는 평균 월드 면적(m²)을 GPU로 한 번 측정한다. <br/>
+    /// 메시가 Read/Write 비활성이라 빌드에서는 스크립트로 정점을 읽을 수 없으므로, 메시를 UV 공간에 펼쳐 그리면서
+    /// 픽셀마다 월드 면적을 기록하고 합산한다. 칠해진 픽셀 수 × 이 값 = 실제로 칠해진 면적
+    /// </summary>
+    private void MeasureAreaPerPixel(PaintableSurface surface)
+    {
+        if (_brushMaterial == null || surface.Canvas == null) return;
+
+        var filter = surface.GetComponent<MeshFilter>();
+        if (filter == null || filter.sharedMesh == null) return;
+        Mesh mesh = filter.sharedMesh;
+
+        RenderTextureFormat format = SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.RFloat)
+            ? RenderTextureFormat.RFloat
+            : RenderTextureFormat.RHalf;
+        RenderTexture areaMap = RenderTexture.GetTemporary(AREA_MAP_SIZE, AREA_MAP_SIZE, 0, format);
+
+        _brushCommands.Clear();
+        _brushCommands.SetRenderTarget(areaMap);
+        _brushCommands.ClearRenderTarget(false, true, Color.clear);
+        _brushCommands.SetViewProjectionMatrices(Matrix4x4.identity, Matrix4x4.identity);
+        Matrix4x4 localToWorld = surface.transform.localToWorldMatrix;
+        int subMeshCount = Mathf.Max(1, mesh.subMeshCount);
+        for (int i = 0; i < subMeshCount; i++)
+        {
+            _brushCommands.DrawMesh(mesh, localToWorld, _brushMaterial, i, AREA_PASS);
+        }
+        Graphics.ExecuteCommandBuffer(_brushCommands);
+
+        int canvasPixels = surface.Canvas.width * surface.Canvas.height;
+        AsyncGPUReadback.Request(areaMap, 0, TextureFormat.RFloat, request =>
+        {
+            RenderTexture.ReleaseTemporary(areaMap);
+
+            if (request.hasError || surface == null)
+            {
+                Debug.LogWarning($"[PaintSurfaceManager] {(surface != null ? surface.name : "?")} 면적 측정 실패. 이 표면은 페인트 점수에 반영되지 않습니다.");
+                return;
+            }
+
+            NativeArray<float> areas = request.GetData<float>();
+            double totalArea = 0;
+            int coveredPixels = 0;
+            for (int i = 0; i < areas.Length; i++)
+            {
+                if (areas[i] > 0f)
+                {
+                    totalArea += areas[i];
+                    coveredPixels++;
+                }
+            }
+
+            if (coveredPixels == 0) return;
+
+            // 측정용 텍스처에서 메시가 차지한 비율 = 실제 페인트 마스크에서 메시가 차지하는 비율
+            float coveredRatio = coveredPixels / (float)areas.Length;
+            surface.AreaPerPixel = (float)(totalArea / (coveredRatio * canvasPixels));
+        });
     }
 
     public void Unregister(int id)
@@ -52,13 +138,15 @@ public class PaintSurfaceManager : MonoBehaviour
     }
 
     /// <summary>
-    /// 지정된 표면의 UV 위치에 브러시를 적용한다. (칠하기/지우기 공용, 로컬에서만 실행)
+    /// 지정된 표면에 월드 좌표 기준 브러시를 적용한다. (칠하기/지우기 공용, 로컬에서만 실행) <br/>
+    /// 표면 메시를 UV 공간에 펼쳐 그리면서 픽셀마다 월드 거리를 재므로, 메시 크기/스케일/UV 배치와
+    /// 상관없이 어느 표면이든 같은 실제 크기의 자국이 된다. 모서리에 찍으면 양쪽 면에 걸쳐 칠해진다.
     /// </summary>
     /// <param name="surfaceId">대상 표면 ID</param>
-    /// <param name="uv">브러시를 찍을 UV 좌표 (0~1)</param>
-    /// <param name="radius">브러시 반경 (UV 기준)</param>
+    /// <param name="worldPoint">브러시 중심 (레이가 맞은 월드 좌표)</param>
+    /// <param name="radius">브러시 반경 (미터)</param>
     /// <param name="isPaint">true = 페인트 칠하기, false = 지우기</param>
-    public void DrawAt(int surfaceId, Vector2 uv, float radius, bool isPaint)
+    public void DrawAt(int surfaceId, Vector3 worldPoint, float radius, bool isPaint)
     {
         if (_brushMaterial == null) return;
 
@@ -68,62 +156,28 @@ public class PaintSurfaceManager : MonoBehaviour
             return;
         }
 
-        // 1. 스케일 절대값 가져오기 (음수 스케일 방어)
-        Vector3 lossy = surface.transform.lossyScale;
-        Vector3 absScale = new Vector3(Mathf.Abs(lossy.x), Mathf.Abs(lossy.y), Mathf.Abs(lossy.z));
-
-        float meshWorldSize = 1f;
-
         var filter = surface.GetComponent<MeshFilter>();
-        if (filter != null && filter.sharedMesh != null)
+        if (filter == null || filter.sharedMesh == null) return;
+        Mesh mesh = filter.sharedMesh;
+
+        _brushMaterial.SetVector(BrushPosId, worldPoint);
+        _brushMaterial.SetFloat(BrushRadiusId, Mathf.Max(0.001f, radius));
+        _brushMaterial.SetFloat(BrushValueId, isPaint ? 1f : 0f);
+
+        _brushCommands.Clear();
+        _brushCommands.SetRenderTarget(surface.Canvas);
+        // 뷰/투영을 단위 행렬로 두면 셰이더의 UNITY_MATRIX_P에는 플랫폼 보정(렌더 텍스처 상하 반전 등)만 남는다
+        _brushCommands.SetViewProjectionMatrices(Matrix4x4.identity, Matrix4x4.identity);
+
+        // 서브메시(멀티 머테리얼)로 나뉜 메시도 전체 면이 빠짐없이 칠해지도록 전부 그린다
+        Matrix4x4 localToWorld = surface.transform.localToWorldMatrix;
+        int subMeshCount = Mathf.Max(1, mesh.subMeshCount);
+        for (int i = 0; i < subMeshCount; i++)
         {
-            Vector3 boundsSize = filter.sharedMesh.bounds.size;
-
-            // 💡 [개선] 3D 스케일 중 평균적인 대표 축 크기를 산출 (절대 스케일 적용)
-            Vector3 realWorldBounds = Vector3.Scale(boundsSize, absScale);
-
-            // X, Y, Z 중 가장 큰 실측값 기준
-            meshWorldSize = Mathf.Max(realWorldBounds.x, Mathf.Max(realWorldBounds.y, realWorldBounds.z));
+            _brushCommands.DrawMesh(mesh, localToWorld, _brushMaterial, i, BRUSH_PASS);
         }
 
-        meshWorldSize = Mathf.Max(0.0001f, meshWorldSize);
-
-        // 2. 머티리얼의 MainTexture Tiling(타일링) 수치 가져오기 (있는 경우)
-        Vector2 textureTiling = Vector2.one;
-        var renderer = surface.GetComponent<Renderer>();
-        if (renderer != null && renderer.sharedMaterial != null)
-        {
-            // 머티리얼에 _MainTex Tiling이 설정되어 있다면 가져옴
-            if (renderer.sharedMaterial.HasProperty("_MainTex"))
-            {
-                textureTiling = renderer.sharedMaterial.GetTextureScale("_MainTex");
-                textureTiling = new Vector2(Mathf.Abs(textureTiling.x), Mathf.Abs(textureTiling.y));
-            }
-        }
-
-        // 3. UV 반경 산출 (Tiling 역산 포함)
-        // Tiling이 클수록 UV는 축소되므로 UV 반경을 Tiling에 맞춰 보정
-        float baseUvRadius = radius / meshWorldSize;
-
-        // Tiling의 평균값을 적용하여 타일링으로 인한 크기 변형 방지
-        float tilingFactor = (textureTiling.x + textureTiling.y) * 0.5f;
-        if (tilingFactor > 0.0001f)
-        {
-            baseUvRadius *= tilingFactor;
-        }
-
-        // 안전 클램핑
-        float finalUvRadius = Mathf.Clamp(baseUvRadius, 0.001f, 0.5f);
-
-        RenderTexture temp = RenderTexture.GetTemporary(surface.Canvas.descriptor);
-
-        _brushMaterial.SetVector("_BrushUV", new Vector4(uv.x, uv.y, 0, 0));
-        _brushMaterial.SetFloat("_BrushRadius", finalUvRadius); // Float 전달
-        _brushMaterial.SetFloat("_BrushValue", isPaint ? 1f : 0f);
-
-        Graphics.Blit(surface.Canvas, temp, _brushMaterial);
-        Graphics.Blit(temp, surface.Canvas);
-        RenderTexture.ReleaseTemporary(temp);
+        Graphics.ExecuteCommandBuffer(_brushCommands);
 
         if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsServer)
         {
@@ -132,7 +186,7 @@ public class PaintSurfaceManager : MonoBehaviour
     }
 
     /// <summary>
-    /// 표면의 실제 오염 픽셀 비율을 비동기로 읽어온다.
+    /// 표면의 칠해진 픽셀을 비동기로 세어 오염 비율과 실제 칠해진 면적(m²)을 갱신한다.
     /// 같은 표면에 대해 이미 읽기 요청이 진행 중이면 새 요청을 보내지 않고 건너뛴다.
     /// (연사로 인해 초당 여러 번 호출되어도, 이전 요청이 끝나야 다음 요청이 나가므로
     ///  자연스럽게 스로틀링되어 104만 픽셀 풀스캔이 겹쳐 쌓이는 걸 막아준다)
@@ -161,18 +215,21 @@ public class PaintSurfaceManager : MonoBehaviour
                 }
             }
 
-            float percent = (paintedPixels / (float)totalPixels) * 100f;
+            // 페인트 점수는 비율이 아니라 실제 면적으로 매긴다 (큰 바닥이든 작은 기둥이든 같은 면적이면 같은 점수)
+            float paintedArea = paintedPixels * surface.AreaPerPixel;
 
-            // 잔여 얼룩(눈에 안 보이는 수준)은 0으로 취급
-            if (percent < CONTAMINATION_THRES_HOLD)
+            // 잔여 얼룩(눈에 안 보이는 수준)은 0으로 취급. 비율 기준이면 큰 바닥에서 수 m²가 무시되므로 면적 기준
+            if (paintedArea < MIN_PAINTED_AREA)
             {
-                percent = 0f;
+                paintedArea = 0f;
+                paintedPixels = 0;
             }
 
-            // 소수점 2자리로 반올림
-            percent = Mathf.Round(percent * 100f) / 100f;
+            surface.PaintedArea = paintedArea;
 
-            surface.ContaminationPercent = percent;
+            // 참고용 비율 (소수점 2자리)
+            float percent = (paintedPixels / (float)totalPixels) * 100f;
+            surface.ContaminationPercent = Mathf.Round(percent * 100f) / 100f;
 
             ScoreManager.Instance?.RecalculateTotalContamination();
         });

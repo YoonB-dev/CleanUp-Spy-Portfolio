@@ -5,7 +5,8 @@ using UnityEngine;
 /// 원본 렌더러/머테리얼은 절대 건드리지 않는다.
 /// 대신 같은 메시를 쓰는 투명 오버레이 자식 오브젝트를 런타임에 자동 생성해서
 /// 그 위에 페인트 마스크를 덧그린다 (원본 셰이더/텍스처/노멀맵 등 그대로 유지).
-/// 반드시 MeshCollider를 사용해야 함 (hit.textureCoord를 얻기 위해).
+/// 브러시는 레이가 맞은 월드 좌표 기준으로 그려지므로(PaintSurfaceManager.DrawAt) MeshCollider의 Convex 여부와 무관하다.
+/// 단, 메시에 겹치지 않는 UV0가 있어야 칠한 자리가 다른 면에 같이 묻지 않는다.
 /// </summary>
 [RequireComponent(typeof(MeshFilter))]
 [RequireComponent(typeof(MeshCollider))]
@@ -31,6 +32,12 @@ public class PaintableSurface : MonoBehaviour
     private const string MaskPropertyName = "_PaintMask";
 
     public float ContaminationPercent { get; set; } = 0f;
+
+    /// <summary>칠해진 실제 면적(m²). 서버가 페인트 마스크를 읽을 때 갱신. 페인트 점수는 이 값의 합으로 계산한다</summary>
+    public float PaintedArea { get; set; } = 0f;
+
+    /// <summary>페인트 마스크 1픽셀이 덮는 평균 월드 면적(m²). 등록 시 GPU로 한 번 측정하며, 0이면 아직 측정 전</summary>
+    public float AreaPerPixel { get; set; } = 0f;
     private void Awake()
     {
         int dynamicSize = CalculateDynamicResolution();

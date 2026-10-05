@@ -31,12 +31,14 @@ public class RoleAssignmentManager : NetworkBehaviour
         }
 
         registeredPlayers.Add(roleManager);
-        
 
-        if (IsServer)
+        // 플레이어가 이 매니저보다 먼저 스폰되면(TestMove처럼 PlayerPrefab 자동 스폰) 이 컴포넌트의 IsServer가
+        // 아직 false라 배정을 건너뛰므로, 스폰 순서와 무관한 NetworkManager 기준으로 판단한다
+        if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsServer)
         {
-            // TODO: 임시 테스트용. 인원 대기와 무작위 배정을 건너뛰고 바로 마피아로 만든다
-            if (debugForceAllMafia)
+            // TODO: 임시 테스트용. 인원 대기와 무작위 배정을 건너뛰고 바로 마피아로 만든다.
+            // 로비를 거치지 않고 씬을 바로 실행한 경우(RoomSettings 없음)도 테스트로 보고 마피아로 시작한다
+            if (debugForceAllMafia || RoomSettings.Instance == null)
             {
                 ForceAssignRole(roleManager.OwnerClientId, PlayerRole.Mafia);
                 return;
@@ -64,7 +66,7 @@ public class RoleAssignmentManager : NetworkBehaviour
     /// </summary>
     private void CheckAndAssignRoles()
     {
-        if (!IsServer) return;
+        if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsServer) return;
 
         // 1. 방 설정 데이터와 현재 스폰된 인원이 일치하는지 검사
         if (RoomSettings.Instance == null)
