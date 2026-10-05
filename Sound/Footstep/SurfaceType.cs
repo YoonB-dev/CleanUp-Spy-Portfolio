@@ -8,4 +8,5 @@ public enum SurfaceType
     Dirt = 1,       // 흙
     Wood = 2,       // 나무
     Stone = 3,      // 돌, 콘크리트
+    Metal = 4,      // 금속
 }
