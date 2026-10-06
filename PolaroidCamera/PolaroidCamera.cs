@@ -16,8 +16,11 @@ public class PolaroidCamera : NetworkBehaviour, ICaptureTool, IPickupListener
     [Header("References")]
     [Tooltip("뷰파인더 화면에 실시간으로 그려주는 자식 카메라 (구멍 뒤 스크린용)")]
     [SerializeField] private Camera viewfinderCamera;
-    [Tooltip("viewfinderCamera가 렌더링할 RenderTexture. 구멍 뒤 스크린 머테리얼에도 동일한 텍스처를 연결해둘 것")]
+    [Tooltip("뷰파인더 RenderTexture 원본. 런타임엔 이 설정을 복사한 카메라 전용 RT를 만들어 쓴다")]
     [SerializeField] private RenderTexture viewfinderRT;
+    [Tooltip("뷰파인더 스크린 렌더러. 인스턴스마다 전용 RT를 꽂아준다")]
+    [SerializeField] private Renderer viewfinderRenderer;
+    [SerializeField] private string viewfinderTextureProperty = "_BaseMap";
     [Tooltip("스폰할 사진 프리팹")]
     [SerializeField] private GameObject photoPrefab;
     [Tooltip("사진이 튀어나오는 위치/방향")]
@@ -49,16 +52,32 @@ public class PolaroidCamera : NetworkBehaviour, ICaptureTool, IPickupListener
 
     private PickupItem _pickupItem;
     private ZoomableItem _zoomableItem;
+    private Material _viewfinderMaterial;
     private void Awake()
     {
         _pickupItem = GetComponent<PickupItem>();
         _zoomableItem = GetComponent<ZoomableItem>();
+
+        // RT 에셋은 모든 카메라가 공유하므로, 설정만 복사해 이 카메라 전용 RT를 만든다
+        if (viewfinderRT != null)
+        {
+            viewfinderRT = new RenderTexture(viewfinderRT.descriptor) { name = $"{name}_Viewfinder" };
+            viewfinderRT.Create();
+        }
+
+        if (viewfinderRenderer != null)
+        {
+            // .material은 이 렌더러 전용 복사본을 만든다
+            _viewfinderMaterial = viewfinderRenderer.material;
+            _viewfinderMaterial.SetTexture(viewfinderTextureProperty, viewfinderRT);
+        }
 
         if (viewfinderCamera != null)
         {
             viewfinderCamera.targetTexture = viewfinderRT;
             viewfinderCamera.enabled = false; // 조준 중에만 렌더링 (성능 절약)
         }
+        ClearViewfinderTexture(); // 새 RT는 내용이 비정의 상태라 검게 초기화
         _remainingPhotos.OnValueChanged += OnRemainingPhotosChanged;
         UpdateRemainingPhotosUI();
 
@@ -68,6 +87,20 @@ public class PolaroidCamera : NetworkBehaviour, ICaptureTool, IPickupListener
     public override void OnNetworkDespawn()
     {
         _remainingPhotos.OnValueChanged -= OnRemainingPhotosChanged;
+    }
+
+    public override void OnDestroy()
+    {
+        // 런타임에 만든 RT와 머테리얼 복사본은 자동으로 해제되지 않는다
+        if (viewfinderCamera != null) viewfinderCamera.targetTexture = null;
+        if (viewfinderRT != null)
+        {
+            viewfinderRT.Release();
+            Destroy(viewfinderRT);
+        }
+        if (_viewfinderMaterial != null) Destroy(_viewfinderMaterial);
+
+        base.OnDestroy();
     }
 
     private void Update()

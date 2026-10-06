@@ -41,11 +41,11 @@ public class PlayerInventory : NetworkBehaviour
 
     private void Start()
     {
-        TryBindUI();
+        if (IsLocalPlayer) TryBindUI();
     }
     private void TryBindUI()
     {
-        if (IsLocalPlayer && InventoryUIController.Instance != null)
+        if (InventoryUIController.Instance != null)
         {
             InventoryUIController.Instance.BindInventory(this);
             // 바인딩 성공했으니 UI도 바로 한번 갈아주기.

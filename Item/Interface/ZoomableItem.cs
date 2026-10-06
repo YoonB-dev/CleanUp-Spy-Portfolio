@@ -68,7 +68,8 @@ public class ZoomableItem : NetworkBehaviour, IZoomTool, IPickupListener
     // ICameraTool 구현 (플레이어의 Hold/Input 스크립트에서 우클릭 시 호출)
     public void Aim(bool isAiming)
     {
-        if (!_isEquipped.Value) return;
+        // 버린 직후/줍자마자처럼 소유권이 아직 안 맞는 순간엔 보내지 않는다 (서버가 어차피 거부)
+        if (!IsOwner || !_isEquipped.Value) return;
 
         SetAimingStateServerRpc(isAiming);
     }
