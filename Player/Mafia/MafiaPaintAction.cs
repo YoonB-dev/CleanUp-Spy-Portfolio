@@ -77,13 +77,12 @@ public class MafiaPaintAction : NetworkBehaviour
             _currentPaint.Value = 1.0f; // 초기화 시 100% 충전
         }
 
-        // 내가 로컬 플레이어이고 마피아라면 UI에 내 스크립트 바인딩
-        if (IsOwner && _roleManager != null && _roleManager.CurrentRole == PlayerRole.Mafia)
+        // 역할은 모든 플레이어가 등록된 뒤에 배정되므로 스폰 시점엔 아직 None일 수 있다.
+        // 변경 이벤트로 받아서 그때마다 게이지 구독/총 표시를 다시 판단한다
+        if (_roleManager != null)
         {
-            if (PaintGaugeUI.Instance != null)
-            {
-                PaintGaugeUI.Instance.Subscribe(this);
-            }
+            _roleManager.RoleChanged += OnRoleChanged;
+            OnRoleChanged(_roleManager.CurrentRole);
         }
     }
 
@@ -94,6 +93,13 @@ public class MafiaPaintAction : NetworkBehaviour
             _inventory.CurrentSlotNetworkVariable.OnValueChanged -= OnInventorySlotChanged;
         }
 
+        _currentPaint.OnValueChanged -= OnPaintValueChanged;
+
+        if (_roleManager != null)
+        {
+            _roleManager.RoleChanged -= OnRoleChanged;
+        }
+
         if (IsOwner)
         {
             if (PaintGaugeUI.Instance != null)
@@ -102,7 +108,28 @@ public class MafiaPaintAction : NetworkBehaviour
             }
         }
     }
-    
+
+    private void OnRoleChanged(PlayerRole role)
+    {
+        // 다른 플레이어 화면에서도 총이 보여야 하므로 표시는 모든 인스턴스에서 갱신
+        if (_inventory != null)
+        {
+            UpdatePaintGunVisual(_inventory.CurrentSlot);
+        }
+
+        // 게이지 UI는 내 로컬 플레이어만, 마피아일 때만 바인딩
+        if (!IsOwner || PaintGaugeUI.Instance == null) return;
+
+        if (role == PlayerRole.Mafia)
+        {
+            PaintGaugeUI.Instance.Subscribe(this);
+        }
+        else
+        {
+            PaintGaugeUI.Instance.Unsubscribe();
+        }
+    }
+
 
     private void OnInventorySlotChanged(int previousValue, int newValue)
     {
