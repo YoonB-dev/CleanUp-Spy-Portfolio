@@ -105,8 +105,9 @@
 
 ```bash
 # 파일별 작성자 줄 수
-git blame -w -M -C --line-porcelain Scripts/<경로> | grep '^author ' | sort | uniq -c
+git blame -w -M -C --ignore-revs-file .git-blame-ignore-revs --line-porcelain Scripts/<경로> | grep '^author ' | sort | uniq -c
 ```
 
+- 공개 전에 주석만 정리한 커밋은 `.git-blame-ignore-revs`에 적어 blame에서 건너뜁니다. GitHub의 Blame 화면에는 자동으로 적용됩니다.
 - subtree 특성상 이 레포에서 `git log -- Scripts/<경로>`를 실행하면 add 커밋 하나만 보입니다. 줄 단위 작성자는 `git blame`으로 확인할 수 있습니다.
 - 채팅·음성 PR(#36, #38)의 squash 커밋은 GitHub 머지 과정에서 작성자 이름은 김도환인데 이메일이 제 GitHub noreply 주소로 기록돼 있습니다. squash 전 원본 커밋이 모두 김도환 작성이라 김도환 작업으로 분류했습니다.

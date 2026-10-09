@@ -1,0 +1,6 @@
+# 주석 정리 커밋 (주석과 에디터 툴 문구의 장식 기호만 고침, 동작 변경 없음). git blame에서 건너뛴다
+# 사용: git blame --ignore-revs-file .git-blame-ignore-revs <파일>  (GitHub Blame 화면은 자동 적용)
+# chore: 주석 정리
+2828ee47dfdb7e87d65972b75a62e4e52293f6ff
+# chore: 주석 정리2
+754ae3d010d2f9557df36207d71e7ac9e524967c
