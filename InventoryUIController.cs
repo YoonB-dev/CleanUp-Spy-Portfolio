@@ -27,8 +27,12 @@ public class InventoryUIController : SceneSingleton<InventoryUIController>
     [SerializeField] private GameObject bulletCountRoot;
     [SerializeField] private TMP_Text bulletCountText;
 
+    [Header("마피아 쓰레기 생성 스킬 아이콘 (Filled 타입, 비워두면 'TrashSkill' 오브젝트를 자동으로 찾음)")]
+    [SerializeField] private Image trashSkillImage;
+
     private const string ItemImageChildName = "ItemImage";
     private const string BulletCountName = "BulletCount";
+    private const string TrashSkillName = "TrashSkill";
 
     private PlayerInventory _targetInventory;
     private Image[] _slotBackgrounds;
@@ -40,6 +44,13 @@ public class InventoryUIController : SceneSingleton<InventoryUIController>
         CacheSlotImages();
         CacheBulletCount();
         if (bulletCountRoot != null) bulletCountRoot.SetActive(false);
+
+        if (trashSkillImage == null)
+        {
+            Transform found = FindChildRecursive(transform, TrashSkillName);
+            if (found != null) trashSkillImage = found.GetComponent<Image>();
+        }
+        SetTrashSkillCooldown(0f);
     }
 
     protected override void OnDestroy()
@@ -63,11 +74,29 @@ public class InventoryUIController : SceneSingleton<InventoryUIController>
         }
     }
 
-    public void Slot4SetActive(bool isActive)
+    /// <summary>
+    /// 마피아 전용 UI(4번 페인트 총 슬롯, 쓰레기 생성 스킬 아이콘)를 켜고 끕니다.
+    /// </summary>
+    public void SetMafiaUIActive(bool isActive)
     {
         if (slot4Image != null)
         {
             slot4Image.gameObject.SetActive(isActive);
+        }
+        if (trashSkillImage != null)
+        {
+            trashSkillImage.gameObject.SetActive(isActive);
+        }
+    }
+
+    /// <summary>
+    /// 쓰레기 생성 쿨타임 표시. remainingRatio = 남은 쿨타임 / 전체 쿨타임 (0이면 사용 가능 → 가득 참)
+    /// </summary>
+    public void SetTrashSkillCooldown(float remainingRatio)
+    {
+        if (trashSkillImage != null)
+        {
+            trashSkillImage.fillAmount = 1f - Mathf.Clamp01(remainingRatio);
         }
     }
 

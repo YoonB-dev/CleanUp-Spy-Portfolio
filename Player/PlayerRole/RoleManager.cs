@@ -27,7 +27,7 @@ public class RoleManager : NetworkBehaviour
 
         if (IsLocalPlayer)
         {
-            InventoryUIController.Instance?.Slot4SetActive(CurrentRole == PlayerRole.Mafia);
+            InventoryUIController.Instance?.SetMafiaUIActive(CurrentRole == PlayerRole.Mafia);
         }
 
         RoleChanged?.Invoke(CurrentRole);
@@ -59,7 +59,7 @@ public class RoleManager : NetworkBehaviour
         RoleChanged?.Invoke(newRole);
         if (IsLocalPlayer)
         {
-            InventoryUIController.Instance?.Slot4SetActive(newRole == PlayerRole.Mafia);
+            InventoryUIController.Instance?.SetMafiaUIActive(newRole == PlayerRole.Mafia);
         }
     }
 }

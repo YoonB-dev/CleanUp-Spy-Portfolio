@@ -9,7 +9,7 @@ public class MafiaActionTrash : NetworkBehaviour
     [SerializeField] private GameObject trashPrefab;
     // 마피아가 생성할 쓰레기 목록 -> 여기에 SO등록
     [SerializeField] private TrashData[] trashDatabase;
-    private const float abilityCoolTime = 2f; // 마피아 능력 쿨타임
+    private const float abilityCoolTime = 5f; // 마피아 능력 쿨타임
     private float _currentCoolTime = 0f;
     private float _serverCoolTime = 0f; // 서버용 실제 쿨타임 타이머
     private RoleManager _roleManager;
@@ -33,7 +33,8 @@ public class MafiaActionTrash : NetworkBehaviour
         // 로컬 플레이어는 로컬 쿨타임 관리 (UI용임)
         if (IsOwner && _currentCoolTime > 0)
         {
-            _currentCoolTime -= Time.deltaTime;
+            _currentCoolTime = Mathf.Max(0f, _currentCoolTime - Time.deltaTime);
+            if (InventoryUIController.Instance != null) InventoryUIController.Instance.SetTrashSkillCooldown(_currentCoolTime / abilityCoolTime);
         }
     }
     public void OnMafiaAbility(InputAction.CallbackContext context)
@@ -127,6 +128,7 @@ public class MafiaActionTrash : NetworkBehaviour
         if (IsOwner)
         {
             _currentCoolTime = duration;
+            if (InventoryUIController.Instance != null) InventoryUIController.Instance.SetTrashSkillCooldown(1f);
             Debug.Log($"[로컬] 서버 승인 완료! {duration}초 쿨타임 UI 시작.");
         }
     }

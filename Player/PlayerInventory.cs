@@ -52,7 +52,7 @@ public class PlayerInventory : NetworkBehaviour
             InventoryUIController.Instance.UpdateUI();
             if (_roleManager != null)
             {
-                InventoryUIController.Instance.Slot4SetActive(_roleManager.CurrentRole == PlayerRole.Mafia);
+                InventoryUIController.Instance.SetMafiaUIActive(_roleManager.CurrentRole == PlayerRole.Mafia);
             }
         }
         else
