@@ -24,7 +24,7 @@ public class LightSwitch : NetworkBehaviour
     {
         if (IsClient)
         {
-            // 클라이언트는 서버에게 "나 스위치 눌렀어"라고 요청만 함
+            // 클라이언트는 서버에 요청만 함
             RequestToggleSwitchServerRpc();
         }
     }

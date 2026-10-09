@@ -149,7 +149,7 @@ public class MagnetAttractor : NetworkBehaviour, IUsableItem
                     continue;
                 }
 
-                // 2. 멀리 있는 물체는 기존처럼 원뿔(Cone) 각도 판정
+                // 2. 멀리 있는 물체는 원뿔(Cone) 각도 판정
                 float angle = Vector3.Angle(forward, dirToTarget);
                 if (angle > coneAngle * 0.5f) continue;
 

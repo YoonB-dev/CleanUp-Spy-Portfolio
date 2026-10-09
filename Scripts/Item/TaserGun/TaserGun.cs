@@ -67,7 +67,6 @@ public class TaserGun : NetworkBehaviour, IUsableItem
         if (Time.time < _nextFireTime) return;
         if (_currentAmmo.Value <= 0) return;
 
-        // PlayerInteraction에서 안전하게 전달된 카메라 검증
         if (playerCamera == null)
         {
             Debug.LogWarning("[TaserGun] PlayerCamera가 전달되지 않았습니다.");

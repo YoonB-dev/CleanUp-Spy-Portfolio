@@ -246,7 +246,7 @@ public class MafiaPaintAction : NetworkBehaviour
 
     private void Update()
     {
-        // 1. [서버 권위] 페인트 게이지 충전 및 소모 계산
+        // 1. 페인트 게이지 충전 및 소모 계산
         if (IsServer)
         {
             UpdatePaintServerLogic();
@@ -304,11 +304,11 @@ public class MafiaPaintAction : NetworkBehaviour
         if (!_gate.CanDo(PlayerAction.FirePaint)) return;
         if (_currentPaint.Value <= 0f) return;
 
-        // 3. [보안 검증] 서버 측 발사 빈도(Cooltime) 검증 (클라이언트 연사 연동 방어)
+        // 3. 서버 측 발사 빈도(Cooltime) 검증 (클라이언트 연사 연동 방어)
         if (Time.time < _serverNextFireTime) return;
         _serverNextFireTime = Time.time + fireRate;
 
-        // 4. [보안 검증] 현재 슬롯 및 발사 상태(SetFiringServerRpc) 재확인
+        // 4. 현재 슬롯 및 발사 상태(SetFiringServerRpc) 재확인
         if (_inventory == null || _inventory.CurrentSlot != PlayerActionGate.PAINT_GUN_SLOT || !_isFiring) return;
 
         // 모든 검증 통과 시 클라이언트에 그리기 전파

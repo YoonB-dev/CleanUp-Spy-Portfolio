@@ -153,7 +153,6 @@ public class FirstPersonLook : NetworkBehaviour
         _yaw = serverYaw;
         _pitch = serverPitch;
 
-        // 서버에서도 해당 플레이어의 정체성과 카메라 각도를 똑같이 맞춰줍니다.
         transform.rotation = Quaternion.Euler(0f, serverYaw, 0f);
 
         ApplyPitchToCamera(serverPitch);

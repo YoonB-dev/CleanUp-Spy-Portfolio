@@ -4,8 +4,8 @@ using UnityEngine;
 
 /// <summary>
 /// 폴라로이드 카메라 픽업 아이템에 부착하는 보조 컴포넌트.
-/// 위치/자세 관련 로직은 전혀 다루지 않는다 (그건 별도로 처리한다고 하셨으므로 제외).
-/// 이 스크립트가 하는 일은 딱 두 가지:
+/// 위치/자세 관련 로직은 전혀 다루지 않는다.
+/// 이 스크립트가 하는 일은 두 가지:
 ///   1) 조준 중일 때만 뷰파인더 카메라를 켜서 실시간 렌더링
 ///   2) 캡처 시점의 화면을 찍어서 Photo 프리팹으로 스폰
 /// </summary>
@@ -36,7 +36,7 @@ public class PolaroidCamera : NetworkBehaviour, ICaptureTool, IPickupListener
     private float ejectForce = 1.5f;
     private const int MAX_JPG_BYTE_SIZE = 512 * 1024;
 
-    // PickupItem.cs를 건드리지 않기 위해, 서버가 Holder를 폴링해서 여기 미러링한다.
+    // 서버가 Holder를 폴링해서 여기 미러링한다.
     private readonly NetworkVariable<bool> _isEquipped = new NetworkVariable<bool>(
         false,
         NetworkVariableReadPermission.Everyone,
@@ -105,7 +105,6 @@ public class PolaroidCamera : NetworkBehaviour, ICaptureTool, IPickupListener
 
     private void Update()
     {
-        // PickupItem.cs 수정 없이 held 상태를 얻기 위한 서버 측 폴링.
         // Holder는 서버 인스턴스에서만 정확하므로, 여기서 읽어 NetworkVariable로 미러링한다.
         if (IsServer)
         {
@@ -140,7 +139,6 @@ public class PolaroidCamera : NetworkBehaviour, ICaptureTool, IPickupListener
             ClearViewfinderTexture();
         }
     }
-    // ===== ICameraTool 구현 - holdItem이 든 아이템에서 이 인터페이스를 찾아 직접 호출 =====
 
     public void Capture()
     {
@@ -163,7 +161,7 @@ public class PolaroidCamera : NetworkBehaviour, ICaptureTool, IPickupListener
             return;
         }
 
-        // 클릭한 그 순간의 화면을 확실히 얻기 위해 강제로 한 프레임 즉시 렌더링
+        // 클릭한 그 순간의 화면을 얻기 위해 강제로 한 프레임 즉시 렌더링
         viewfinderCamera.Render();
 
         byte[] jpgBytes = CaptureRenderTextureToJpg(viewfinderRT, captureResolution, jpgQuality);

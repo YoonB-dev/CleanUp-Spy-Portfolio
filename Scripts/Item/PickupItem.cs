@@ -132,7 +132,6 @@ public class PickupItem : NetworkBehaviour
             _holderRagdollPoser?.SetCarryTarget(gripPoints);
         }
 
-        // RPC를 통해 모든 클라이언트(특히 소유자 로격 클라이언트)에서 물리적 자식화를 수행합니다.
         AttachToHolderClientRpc(playerInteraction.NetworkObjectId);
     }
 
@@ -151,14 +150,13 @@ public class PickupItem : NetworkBehaviour
 
         DropPos();
 
-        // RPC를 통해 모든 클라이언트에서 자식 관계를 해제하고 월드로 내보냅니다.
         DetachFromHolderClientRpc(throwerId, Vector3.zero, 0f, Vector3.zero);
     }
 
     [ClientRpc]
     private void AttachToHolderClientRpc(ulong holderNetId)
     {
-        // 컴포넌트 초기화 타이밍을 확보하기 위해 코루틴 실행으로 수정.
+        // 컴포넌트 초기화 타이밍을 확보하기 위해 코루틴으로 실행
         StartCoroutine(AttachToHolderCoroutine(holderNetId));
     }
 
@@ -247,7 +245,7 @@ public class PickupItem : NetworkBehaviour
 
     private IEnumerator DetachRoutine(ulong throwerNetId, Vector3 direction, float force, Vector3 torque)
     {
-        // 1. 부모를 끊기 전에 던진 사람의 위치를 기반으로 '가장 정확한 던지기 시작 월드 좌표'를 먼저 계산해 두기
+        // 1. 부모를 끊기 전에 던진 사람의 위치를 기반으로 던지기 시작 월드 좌표를 먼저 계산해 두기
         Vector3 targetWorldPos = transform.position;
         Quaternion targetWorldRot = transform.rotation;
 
@@ -271,11 +269,11 @@ public class PickupItem : NetworkBehaviour
             }
         }
 
-        // 2. 이제 안전하게 부모를 해제하고 스케일을 복원
+        // 2. 부모를 해제하고 스케일을 복원
         transform.SetParent(null);
         transform.localScale = _originalLocalScale;
 
-        // 3. 해제되면서 튄 좌표를 우리가 계산한 정확한 시작 지점으로 강제 고정
+        // 3. 해제되면서 튄 좌표를 1에서 계산한 시작 지점으로 강제 고정
         transform.position = targetWorldPos;
         transform.rotation = targetWorldRot;
 
@@ -301,7 +299,7 @@ public class PickupItem : NetworkBehaviour
             }
         }
 
-        // 이렇게 하면 NetworkTransform이 켜지자마자 이전 위치 버퍼로 강제 회귀(순간이동)시키는 현상을 완벽히 막기 위한 1프레임 대기
+        // NetworkTransform이 켜지자마자 이전 위치 버퍼로 강제 회귀(순간이동)시키는 현상을 막기 위한 1프레임 대기
         yield return null;
 
         // 6. 물리 작동이 시작된 후 안전하게 NetworkTransform을 켜서 서버 패킷 동기화
@@ -383,7 +381,7 @@ public class PickupItem : NetworkBehaviour
 
         DropPos();
 
-        // 1. 모든 클라이언트의 자식 관계를 끊음 (기존 RPC 재활용)
+        // 1. 모든 클라이언트의 자식 관계를 끊음
         DetachFromHolderClientRpc(throwerNetId, direction, force, torque);
 
         // 2. 서버 및 호스트 클라이언트에서 즉시 물리 힘 전달

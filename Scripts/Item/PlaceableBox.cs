@@ -104,7 +104,7 @@ public class PlaceableBox : NetworkBehaviour, IPickupListener
 
         if (isPickedUp)
         {
-            // 내가 직접 주운 박스는 손에 붙어야 하므로 물리 엔진을 완벽하게 잠급니다.
+            // 내가 직접 주운 박스는 손에 붙어야 하므로 물리 엔진을 잠급니다.
             if (rb != null)
             {
                 rb.isKinematic = false; 
@@ -128,10 +128,8 @@ public class PlaceableBox : NetworkBehaviour, IPickupListener
                     Random.Range(-1.0f, 1.0f)
                 ).normalized;
 
-                // 1. 순간적인 충격 힘(Impulse)을 주어 옆으로 튕겨 나가게 만듭니다.
                 rb.AddForce(randomDirection * randomPushForce, ForceMode.Impulse);
 
-                // 2. 상자가 돌면서 떨어지도록 무작위 회전력(Torque)도 살짝 가해줍니다.
                 Vector3 randomTorque = new Vector3(
                     Random.Range(-1.0f, 1.0f),
                     Random.Range(-1.0f, 1.0f),
@@ -155,7 +153,7 @@ public class PlaceableBox : NetworkBehaviour, IPickupListener
             // 위에 얹힌 오브젝트가 '고정된 박스'라면, 그 박스도 연쇄적으로 고정을 풀어버립니다.
             if (col.CompareTag("PlacedBox") && col.TryGetComponent<PlaceableBox>(out var upperBox))
             {
-                upperBox.Demolish(); // 3단, 4단 박스까지 타고 올라가며 연쇄 무너짐 발동!
+                upperBox.Demolish();
             }
         }
     }
@@ -175,10 +173,10 @@ public class PlaceableBox : NetworkBehaviour, IPickupListener
                 {
                     rb.linearVelocity = Vector3.zero;
                     rb.angularVelocity = Vector3.zero;
-                    rb.isKinematic = true;  // 키네마틱을 강제로 유지합니다.
-                    rb.useGravity = false;  // 중력도 확실하게 꺼줍니다.
+                    rb.isKinematic = true;
+                    rb.useGravity = false;
                 }
-                return; // 물리 엔진을 켜지 않고 여기서 함수를 끝냄
+                return;
             }
 
             if (rb != null)

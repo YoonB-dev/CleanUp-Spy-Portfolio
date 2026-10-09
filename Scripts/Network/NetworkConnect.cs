@@ -117,7 +117,7 @@ public class NetworkConnect : MonoBehaviour
             return;
         }
         int currentConnectedCount = NetworkManager.Singleton.ConnectedClientsIds.Count;
-        // 2. [실시간 인원 체크] 로비에서 RoomSettings에 의해 갱신된 MaxPlayers를 기준으로 필터링
+        // 2. 로비에서 RoomSettings에 의해 갱신된 MaxPlayers를 기준으로 필터링
         if (currentConnectedCount >= MaxPlayers)
         {
             response.Approved = false;

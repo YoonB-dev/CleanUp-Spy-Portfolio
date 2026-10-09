@@ -132,7 +132,7 @@ public class PlayerInventory : NetworkBehaviour
         }
         else
         {
-            // 순수 클라이언트라면 서버에 소유권을 가진 채로 당당하게 RPC를 호출합니다.
+            // 순수 클라이언트라면 서버에 소유권을 가진 채로 RPC를 호출합니다.
             RequestChangeSlotServerRpc(targetSlot);
         }
     }
@@ -143,7 +143,7 @@ public class PlayerInventory : NetworkBehaviour
         ChangeSlotLocalLogical(newSlotIndex);
     }
     /// <summary>
-    /// 실제 서버에서 슬롯 상태를 변경하고 Visual을 갱신하는 공통 핵심 로직
+    /// 실제 서버에서 슬롯 상태를 변경하고 Visual을 갱신하는 공통 로직
     /// </summary>
     private void ChangeSlotLocalLogical(int newSlotIndex)
     {
@@ -152,7 +152,7 @@ public class PlayerInventory : NetworkBehaviour
         // 상호 배타 규칙 서버 재검증(치트 방어)
         if (!_gate.CanDo(PlayerActionGate.SlotChangeAction(newSlotIndex))) return;
 
-        _currentSlot.Value = newSlotIndex; // 이 부분이 반드시 들어가야 슬롯이 바뀝니다!
+        _currentSlot.Value = newSlotIndex;
         RefreshInventoryVisuals();
     }
 
@@ -223,7 +223,7 @@ public class PlayerInventory : NetworkBehaviour
 
     private void OnSlotDataChanged(NetworkObjectReference previousValue, NetworkObjectReference newValue)
     {
-        // [버그 방지 핵심] 이전 아이템이 해제(Drop 등)되었다면, 강제로 시각화를 켜서 필드에서 보이게 만듭니다.
+        // 이전 아이템이 해제(Drop 등)되었다면, 강제로 시각화를 켜서 필드에서 보이게 만듭니다.
         if (previousValue.TryGet(out var prevNetObj) && prevNetObj.TryGetComponent<PickupItem>(out var prevItem))
         {
             prevItem.SetVisibility(true);

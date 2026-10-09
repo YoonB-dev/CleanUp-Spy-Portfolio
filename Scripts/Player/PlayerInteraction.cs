@@ -115,7 +115,7 @@ public class PlayerInteraction : NetworkBehaviour
     }
 
     /// <summary>
-    /// [줍기 전용 키] 기존 OnInteract의 줍기 로직만 상속받음
+    /// 줍기 키 입력 처리
     /// </summary>
     public void OnPickupInput(InputAction.CallbackContext context)
     {
@@ -184,7 +184,7 @@ public class PlayerInteraction : NetworkBehaviour
     }
 
     /// <summary>
-    /// [버리기 전용 키] 기존 OnInteract의 버리기 및 박스 배치 로직만 상속받음
+    /// 버리기 키 입력 처리 (박스 배치 포함)
     /// </summary>
     public void OnDropInput(InputAction.CallbackContext context)
     {
@@ -312,7 +312,7 @@ public class PlayerInteraction : NetworkBehaviour
     }
 
     /// <summary>
-    /// 실제 서버에서 아이템 줍기를 처리하는 핵심 비즈니스 로직 (RPC가 아니므로 서버 내부에서 자유롭게 호출 가능)
+    /// 실제 서버에서 아이템 줍기를 처리하는 로직 (RPC가 아니므로 서버 내부에서 자유롭게 호출 가능)
     /// </summary>
     public void PickupLogicalServer(NetworkObjectReference pickupReference, bool forcePickup = false)
     {
@@ -456,7 +456,7 @@ public class PlayerInteraction : NetworkBehaviour
             targetZone = groundHit.collider.GetComponent<PlacementZone>();
         }
 
-        // 바닥이 존재하고, 가로세로 영역 내에 있으며, '서버 시점'에서도 그 자리가 완벽히 비어있는지 확인.
+        // 바닥이 존재하고, 가로세로 영역 내에 있으며, '서버 시점'에서도 그 자리가 비어있는지 확인.
         if (targetZone != null && PlacementValidator.IsValidPlacement(requestedPosition, targetZone, _placementPreview.gBoxSize, currentHeldItem.gameObject))
         {
             if (currentHeldItem.TryGetComponent<PlaceableBox>(out var placeableBox))
@@ -471,7 +471,6 @@ public class PlayerInteraction : NetworkBehaviour
         DropHeldItemStandard();
     }
     
-    // 기존에 사용하시던 일반 드롭 ServerRpc (일반 쓰레기용)
     [ServerRpc]
     private void DropHeldItemServerRpc()
     {
@@ -506,7 +505,7 @@ public class PlayerInteraction : NetworkBehaviour
         return _inventory.GetCurrentEquippedItem() != null;
     }
     /// <summary>
-    /// 네트워크 변수로부터 현재 들고 있는 PickupItem 컴포넌트를 안전하게 긁어옵니다.
+    /// 네트워크 변수로부터 현재 들고 있는 PickupItem 컴포넌트를 가져온다.
     /// </summary>
     public PickupItem GetCurrentHeldItem()
     {
@@ -607,7 +606,7 @@ public class PlayerInteraction : NetworkBehaviour
         }
         else
         {
-            // 0.3초 이상: 서버에서 안전하게 Force를 연산하여 물리 발사
+            // 0.3초 이상: 서버에서 Force를 연산하여 물리 발사
             float clampedProgress = Mathf.Clamp01(holdDuration / gaugeChargeTime);
             float finalForce = Mathf.Lerp(minThrowForce, maxThrowForce, clampedProgress);
             float finalTorqueMagnitude = Mathf.Lerp(minThrowTorque, maxThrowTorque, clampedProgress);
@@ -633,7 +632,7 @@ public class PlayerInteraction : NetworkBehaviour
         PickupItem currentItem = _inventory.GetCurrentEquippedItem();
         if (currentItem == null) return;
 
-        // 3. IUsableItem 인터페이스가 존재하면 OnUse 호출! (테이저건, 흡입기, 카메라 등 일률 적용)
+        // 3. IUsableItem 인터페이스가 존재하면 OnUse 호출 (테이저건, 흡입기, 카메라 등 일률 적용)
         if (currentItem.TryGetComponent<IUsableItem>(out var usableItem))
         {
             usableItem.OnUse(context, playerCamera);

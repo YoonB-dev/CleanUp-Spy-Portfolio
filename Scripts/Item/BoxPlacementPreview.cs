@@ -48,7 +48,6 @@ public class BoxPlacementPreview : MonoBehaviour
     private Vector3 currentPreviewPosition;
     private bool isPreviewValid = false;
 
-    // PlayerInteraction에서 이 좌표들을 슥 가져가서 서버로 던질 수 있도록 프로퍼티로 노출합니다.
     public Vector3 CurrentPreviewPosition => currentPreviewPosition;
     public bool IsPreviewValid => isPreviewValid;
 
@@ -61,7 +60,7 @@ public class BoxPlacementPreview : MonoBehaviour
     }
 
     /// <summary>
-    /// PlayerInteraction의 Update 등에서 이 함수를 매 프레임 호출해 줍니다.
+    /// PlayerInteraction의 Update 등에서 매 프레임 호출한다.
     /// </summary>
     public void UpdatePreview(PickupItem heldItem)
     {

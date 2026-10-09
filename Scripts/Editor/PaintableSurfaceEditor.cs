@@ -43,7 +43,7 @@ public class PaintableSurfaceEditor : Editor
         {
             int newId = i + 1; // 1부터 부여
 
-            // [핵심 해결책] SerializedObject를 통해 개별 오브젝트의 직렬화 프로퍼티를 직접 수정
+            // SerializedObject를 통해 개별 오브젝트의 직렬화 프로퍼티를 직접 수정
             SerializedObject serializedObj = new SerializedObject(surfaces[i]);
             SerializedProperty idProp = serializedObj.FindProperty("surfaceId");
 

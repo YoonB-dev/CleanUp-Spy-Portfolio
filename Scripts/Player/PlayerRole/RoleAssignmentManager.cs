@@ -96,7 +96,7 @@ public class RoleAssignmentManager : NetworkBehaviour
         // 3. RoomSettings에서 설정된 마피아 숫자를 가져옵니다.
         int targetMafiaCount = RoomSettings.Instance.MafiaCount.Value;
 
-        // 안전장치: 마피아 수가 현재 플레이어 수보다 많아지는 기현상 방지
+        // 마피아 수가 현재 플레이어 수보다 많아지지 않게
         targetMafiaCount = Mathf.Clamp(targetMafiaCount, 1, registeredPlayers.Count - 1);
 
         // 4. 무작위 셔플 및 마피아 선출을 위한 인덱스 리스트 생성

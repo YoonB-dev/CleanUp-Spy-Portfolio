@@ -11,7 +11,6 @@ public class AIAssetGenerator : EditorWindow
 {
     private string prompt = "knight character";
 
-    // ★ 시스템 프롬프트 분리 (기본 제약 조건 및 스타일 정의)
     private string systemPrompt = "2D character concept art, full body, front view, T-pose, standing, white background";
     private bool useLowPoly = true;
 
@@ -112,7 +111,6 @@ public class AIAssetGenerator : EditorWindow
         }
     }
 
-    // ★ 프롬프트 조합 모듈
     private string BuildFinalPrompt(string userPrompt, string sysPrompt, bool isLowPoly)
     {
         StringBuilder sb = new StringBuilder();
@@ -169,7 +167,6 @@ public class AIAssetGenerator : EditorWindow
         {
             EditorUtility.DisplayProgressBar("Tripo3D 연동 중", "1/3. 3D 메쉬 생성 요청 중 (Image-to-3D)...", 0.2f);
 
-            // Base64 대신 generatedImageUrl 전달
             string taskId = await RequestTripoImageToModel(generatedImageUrl);
 
             EditorUtility.DisplayProgressBar("Tripo3D 연동 중", "2/3. 3D 메쉬 생성 및 FBX 변환 중...", 0.6f);
@@ -209,7 +206,7 @@ public class AIAssetGenerator : EditorWindow
     {
         string url = "https://openapi.tripo3d.ai/v3/generation/image-to-model";
 
-        // ★ Tripo3D v3 규격: file 객체 내부에 type과 url 명시
+        // Tripo3D v3 규격: file 객체 내부에 type과 url 명시
         JObject json = new JObject
         {
             ["type"] = "image_to_model",

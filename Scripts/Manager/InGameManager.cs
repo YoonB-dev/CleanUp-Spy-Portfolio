@@ -100,7 +100,7 @@ public class InGameManager : NetworkBehaviour
 
     /// <summary>
     /// 로비에 있던 인원 전체가 인게임 씬을 로드했는지 확인하고, 
-    /// 모두가 완료되었다면 비로소 모든 플레이어 캐릭터를 '동시에' 일괄 스폰합니다.
+    /// 모두가 완료되었다면 모든 플레이어 캐릭터를 동시에 일괄 스폰합니다.
     /// </summary>
     private void CheckAndSpawnAllPlayers()
     {
@@ -125,7 +125,7 @@ public class InGameManager : NetworkBehaviour
             return;
         }
 
-        // 3. [모두 로드 완료!] 이제 한 명도 유실 없이 메시지를 받을 준비가 되었으므로 모두 한 번에 스폰합니다.
+        // 3. 한 명도 유실 없이 메시지를 받을 준비가 되었으므로 모두 한 번에 스폰합니다.
         Debug.Log("[InGameManager] 모든 플레이어 로딩 완료! 일괄 스폰을 시작합니다.");
 
         // 더 이상 중복 로딩 감지 및 스폰 처리가 일어나는 것을 막기 위해 이벤트를 꺼줍니다.
@@ -133,7 +133,6 @@ public class InGameManager : NetworkBehaviour
         NetworkManager.Singleton.SceneManager.OnSceneEvent -= ServerOnSceneEvent;
         NetworkManager.Singleton.OnClientDisconnectCallback -= OnClientDisconnect;
 
-        // 목록에 쌓인 모두를 스폰해 줍니다.
         foreach (ulong clientId in loadedClients)
         {
             SpawnPlayerCharacter(clientId);
@@ -148,8 +147,6 @@ public class InGameManager : NetworkBehaviour
         Vector3 randomSpawnPos = Vector3.zero;
         if (PlayerSpawnManager.Instance != null)
         {
-            // PlayerSpawnManager에 Vector3를 반환하는 public 메서드를 하나 열어두거나 
-            // 직접 계산하여 Instantiate 인자로 넣어줍니다.
             randomSpawnPos = PlayerSpawnManager.Instance.GetRandomSpawnPosition();
         }
 
@@ -165,8 +162,6 @@ public class InGameManager : NetworkBehaviour
     {
         if (GameTimerManager.Instance != null)
         {
-            // RoomSettings의 PlayTimeMinutes 값이 초 단위라면 그대로, 
-            // 만약 분 단위라면 뒤에 * 60을 붙여서 초로 넘겨주세요.
             int totalSeconds = RoomSettings.Instance.PlayTimeMinutes.Value;
 
             GameTimerManager.Instance.StartTimer(5, totalSeconds);

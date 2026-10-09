@@ -32,17 +32,17 @@ public class LightInteraction : NetworkBehaviour
 
     private void Update()
     {
-        // 1. [서버 측 검증] 서버에서 실시간으로 타이머를 돌리고 거리를 체크합니다.
+        // 1. 서버에서 실시간으로 타이머를 돌리고 거리를 체크합니다.
         if (IsServer && _serverIsHolding && _serverTargetSwitch != null)
         {
-            // [서버 검증 1] 실시간 거리 및 시야(조준) 확인
+            // 실시간 거리 및 시야(조준) 확인
             if (!ValidateInteraction(_serverTargetSwitch))
             {
                 ServerCancelInteraction();
                 return;
             }
 
-            // [서버 검증 2] 타이머 누적
+            // 타이머 누적
             _serverHoldTimer += Time.deltaTime;
 
             if (_serverHoldTimer >= LIGHT_SWITCH_HOLD_TIME)
@@ -53,7 +53,7 @@ public class LightInteraction : NetworkBehaviour
             }
         }
 
-        // 2. [클라이언트 측 로컬 연출] Local Owner 플레이어의 UI 게이지용 타이머
+        // 2. Local Owner 플레이어의 UI 게이지용 타이머
         if (IsClient && IsOwner && _clientIsHolding)
         {
             _clientHoldTimer += Time.deltaTime;
@@ -168,7 +168,7 @@ public class LightInteraction : NetworkBehaviour
         _serverHoldTimer = 0f;
         _serverTargetSwitch = null;
 
-        // --- [수정] ClientRpcParams를 생성하여 이 오너 플레이어에게만 전송하도록 설정 ---
+        // ClientRpcParams로 이 오너 플레이어에게만 전송
         ClientRpcParams clientRpcParams = new ClientRpcParams
         {
             Send = new ClientRpcSendParams
@@ -178,7 +178,6 @@ public class LightInteraction : NetworkBehaviour
             }
         };
 
-        // 매개변수로 params를 넘겨주며 호출합니다.
         CancelInteractionClientRpc(clientRpcParams);
     }
 
@@ -193,7 +192,7 @@ public class LightInteraction : NetworkBehaviour
     }
 
     /// <summary>
-    /// 서버 측에서 플레이어와 스위치 간의 거리 및 각도(시야)를 판정하는 핵심 검증 메서드
+    /// 서버 측에서 플레이어와 스위치 간의 거리 및 각도(시야)를 판정하는 검증 메서드
     /// </summary>
     private bool ValidateInteraction(LightSwitch lightSwitch)
     {

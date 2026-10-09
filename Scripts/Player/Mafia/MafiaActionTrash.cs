@@ -97,7 +97,7 @@ public class MafiaActionTrash : NetworkBehaviour
             }
             else
             {
-                // 인벤토리가 꽉 찼거나 검증 실패로 못 주웠다면 깔끔하게 스폰 롤백
+                // 인벤토리가 꽉 찼거나 검증 실패로 못 주웠다면 스폰 롤백
                 trashNetObj.Despawn();
                 Destroy(trashMafia);
                 Debug.LogWarning($"[Server] {gameObject.name} 인벤토리가 부족하거나 주울 수 없어 생성 롤백.");

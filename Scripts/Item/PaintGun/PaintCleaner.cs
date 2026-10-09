@@ -30,7 +30,6 @@ public class PaintCleaner : NetworkBehaviour
 
     private void Update()
     {
-        // 네트워크 스폰이 완벽히 완료되지 않았다면 업데이트를 수행하지 않습니다
         if (!IsSpawned) return;
 
         // 1. 아무도 들고 있지 않으면 청소 로직 정지 (IsHeld는 PickupItem이 서버 권위로 관리)
@@ -62,7 +61,7 @@ public class PaintCleaner : NetworkBehaviour
     }
 
     /// <summary>
-    /// PlayerInteraction의 Input Action 이벤트(OnClean)에서 이 함수를 호출해 주어야 합니다.
+    /// PlayerInteraction의 Input Action 이벤트(OnClean)에서 호출한다.
     /// </summary>
     public void SetCleaningInput(bool isPressing)
     {

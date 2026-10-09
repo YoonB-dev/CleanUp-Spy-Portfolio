@@ -14,7 +14,7 @@ public class PaintableSurface : MonoBehaviour
 {
     [Header("Identity")]
     [Tooltip("에디터 버튼을 통해 저장되는 유일 ID입니다.")]
-    [SerializeField] private int surfaceId = -1; // [SerializeField] 필수!
+    [SerializeField] private int surfaceId = -1;
 
     public int SurfaceId => surfaceId;
 

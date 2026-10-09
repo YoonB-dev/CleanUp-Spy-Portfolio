@@ -5,7 +5,7 @@ public class RoleNameTag : MonoBehaviour
 {
     [SerializeField] private TMP_Text _nameText;
     [SerializeField] private RoleManager roleManager;
-    [SerializeField] private PlayerData playerData; // 변경
+    [SerializeField] private PlayerData playerData;
 
     private void Awake()
     {

@@ -103,7 +103,7 @@ public class PickupHighlight : MonoBehaviour
     }
 
     /// <summary>
-    /// TrashObject 등에서 메쉬가 변경되었을 때 외부에서 호출해 주는 핵심 함수
+    /// TrashObject 등에서 메쉬가 변경되었을 때 외부에서 호출
     /// </summary>
     public void RefreshOutlineMesh(Mesh newMesh, int submeshCount)
     {
