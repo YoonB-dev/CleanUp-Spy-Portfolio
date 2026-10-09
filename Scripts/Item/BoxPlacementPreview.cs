@@ -114,7 +114,7 @@ public class BoxPlacementPreview : MonoBehaviour
             if (dynamicPreviewInstance != null)
             {
                 dynamicPreviewInstance.transform.position = targetPosition;
-                dynamicPreviewInstance.transform.localScale = heldItem.transform.localScale * 2.0f; // 플레이어 스케일이 2라서 그거 맞춰서 한거임
+                dynamicPreviewInstance.transform.localScale = heldItem.transform.localScale * 2.0f; // 플레이어 스케일(2)에 맞춤
                 dynamicPreviewInstance.transform.rotation = Quaternion.identity;
                 ApplyPreviewColor(canPlace);
                 dynamicPreviewInstance.SetActive(true);

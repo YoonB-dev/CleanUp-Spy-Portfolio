@@ -23,7 +23,7 @@ public class PickupItem : NetworkBehaviour
     private Collider itemCollider;
     private PickupHighlight pickupHighlight;
     [Header("Carry Transform Settings")]
-    // 던지기나 그런거에 사용되는 기본 위치
+    // 던지기 등에 사용되는 기본 위치
     [SerializeField] private float carryDistance = 1f; public float CarryDistance => carryDistance; 
     [SerializeField] private float carryHeight = -0.3f; public float CarryHeight => carryHeight;
     [Header("Carry Anchor Offset (손 앵커 위치 오프셋)")]
@@ -81,7 +81,7 @@ public class PickupItem : NetworkBehaviour
             _itemRigidbody.isKinematic = false;
             _itemRigidbody.useGravity = true;
         }
-        GetComponent<NetworkObject>().AutoObjectParentSync = false; // 부모 동기화는 직접 RPC로 처리 -> 이걸로 플레이어 프리펩에 따라다니게 하려고 하기 위함
+        GetComponent<NetworkObject>().AutoObjectParentSync = false; // 부모 동기화는 직접 RPC로 처리 (플레이어를 따라다니게 하기 위함)
         _originalLocalScale = transform.localScale;
         _renderers = GetComponentsInChildren<MeshRenderer>();
         _canvases = GetComponentsInChildren<Canvas>(true);
@@ -260,7 +260,7 @@ public class PickupItem : NetworkBehaviour
             // 던진 사람 손 앞의 정확한 월드 좌표 도출
             targetWorldPos = throwerTransform.TransformPoint(new Vector3(0, carryHeight, carryDistance));
             targetWorldRot = throwerTransform.rotation;
-            // 참고로 사람 손 앞으로 가는 이유는 동기화 지연 때문에 순간이동 하는 느낌이 들어서 그럼. networkobject를 비활성화 했기 때문임.ㅇㅇ
+            // 손 앞에서 시작하는 이유: NetworkObject를 비활성화한 상태라 동기화 지연 때문에 순간이동하는 것처럼 보이기 때문
 
             // 오프셋을 기본값으로 복원 (다음 아이템이 기본 오프셋을 쓸 수 있도록)
             if (overrideCarryAnchorOffset && throwerNetObj.TryGetComponent<RagdollNetworkSync>(out var ragdollSync))
@@ -395,7 +395,7 @@ public class PickupItem : NetworkBehaviour
 
             if(force > 0)
             {
-                // 정면 방향으로 살짝 위쪽(Vector3.up * 0.1f) 보정을 섞어주면 더 이쁘게 날아감 포물선을 그리면서!
+                // 정면 방향에 위쪽 보정을 섞어 포물선으로 날아가게 한다
                 Vector3 finalDirection = (direction + Vector3.up * 0.15f).normalized;
                 _itemRigidbody.AddForce(finalDirection * force, ForceMode.Impulse);
                 _itemRigidbody.AddTorque(torque, ForceMode.Impulse);

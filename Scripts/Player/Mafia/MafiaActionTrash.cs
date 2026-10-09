@@ -30,7 +30,7 @@ public class MafiaActionTrash : NetworkBehaviour
             _serverCoolTime -= Time.deltaTime;
         }
 
-        // 로컬 플레이어는 로컬 쿨타임 관리 (UI용임)
+        // 로컬 플레이어는 로컬 쿨타임 관리 (UI용)
         if (IsOwner && _currentCoolTime > 0)
         {
             _currentCoolTime = Mathf.Max(0f, _currentCoolTime - Time.deltaTime);

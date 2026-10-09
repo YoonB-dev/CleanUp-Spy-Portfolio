@@ -31,7 +31,7 @@ public class PaintSurfaceManager : MonoBehaviour
     private Material _brushMaterial;
     private CommandBuffer _brushCommands;
     private readonly Dictionary<int, PaintableSurface> _surfaces = new();
-    private readonly HashSet<int> _readbackInFlight = new(); // 표면별로 이미 읽기 오쳥이 진행 중인지 추적.
+    private readonly HashSet<int> _readbackInFlight = new(); // 표면별로 이미 읽기 요청이 진행 중인지 추적.
     public IEnumerable<PaintableSurface> AllSurfaces => _surfaces.Values;
     private void Awake()
     {

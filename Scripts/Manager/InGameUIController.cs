@@ -31,7 +31,7 @@ public class InGameUIController : NetworkBehaviour
     [SerializeField] private LocalizeStringEvent breakdownText;
     [SerializeField] private GameObject returnButton;
     [SerializeField] private GameObject waitHostText;
-    private object[] _argsBuffer = new object[1]; // 한번만 생성하고 재활용 하기 위한 버파
+    private object[] _argsBuffer = new object[1]; // 한번만 생성하고 재활용하기 위한 버퍼
     private RoleManager _localRole;
 
     private void Awake()

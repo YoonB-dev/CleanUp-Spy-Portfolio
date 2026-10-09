@@ -49,7 +49,7 @@ public class RagdollTuner : EditorWindow
         EditorGUILayout.LabelField("프리셋", EditorStyles.boldLabel);
 
         if (GUILayout.Button("흐물 (갱비스트에 가까움)")) Set(joints, 150f, 12f);
-        if (GUILayout.Button("★ 400 / 30 (찾아둔 기본값)")) Set(joints, 400f, 30f);
+        if (GUILayout.Button("400 / 30 (찾아둔 기본값)")) Set(joints, 400f, 30f);
         if (GUILayout.Button("뻣뻣")) Set(joints, 1000f, 50f);
 
         EditorGUILayout.Space();

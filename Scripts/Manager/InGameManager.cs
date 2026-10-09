@@ -13,7 +13,7 @@ public class InGameManager : NetworkBehaviour
 
     [Header("스폰 설정")]
     [SerializeField] private GameObject inGamePlayerPrefab; // 실제 조종할 인게임 캐릭터 프리팹
-    private readonly HashSet<ulong> loadedClients = new(); // 씬 로드 완료를 보고한 클라이언트 ID를 저장하는 HashSet -> 이게 다 되어야 캐릭터 스폰함.
+    private readonly HashSet<ulong> loadedClients = new(); // 씬 로드 완료를 보고한 클라이언트 ID를 저장하는 HashSet. 전원이 모이면 캐릭터를 스폰한다
     private bool _hasSpawnedPlayers; // 일괄 스폰은 한 번만. 스폰 후 이탈 시 재검사로 전원이 중복 스폰되는 것을 막는다
 
     [Header("승패 설정")]

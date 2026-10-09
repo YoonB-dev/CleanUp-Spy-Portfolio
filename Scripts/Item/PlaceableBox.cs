@@ -8,7 +8,7 @@ public class PlaceableBox : NetworkBehaviour, IPickupListener
     private Rigidbody rb;
     private Collider boxCollider;
     private PickupItem pickupItem;
-    private float boxSize = 1.0f; // 검사 일단 2배함 (플레이어 스케일에 따라서)
+    private float boxSize = 1.0f; // 위층 박스 검사에 쓰는 박스 한 칸 크기
     // 무너짐 연출용 변수
     private float randomPushForce = 3.0f;  // 양옆으로 튕기는 힘의 세기
     private float randomTorqueForce = 1.0f; // 회전하며 떨어지는 힘의 세기
@@ -124,7 +124,7 @@ public class PlaceableBox : NetworkBehaviour, IPickupListener
                 // 랜덤한 힘과 회전을 주어 자연스럽게 무너지는 연출
                 Vector3 randomDirection = new Vector3(
                     Random.Range(-1.0f, 1.0f),
-                    Random.Range(0.1f, 0.5f), // 아주 살짝 위로 통 튀튀하게 Y축 양수 부여
+                    Random.Range(0.1f, 0.5f), // 살짝 위로 튀도록 Y축은 양수
                     Random.Range(-1.0f, 1.0f)
                 ).normalized;
 

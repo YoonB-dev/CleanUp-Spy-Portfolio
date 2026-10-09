@@ -48,7 +48,7 @@ public class PlayerInventory : NetworkBehaviour
         if (InventoryUIController.Instance != null)
         {
             InventoryUIController.Instance.BindInventory(this);
-            // 바인딩 성공했으니 UI도 바로 한번 갈아주기.
+            // 바인딩 직후 UI를 한 번 갱신
             InventoryUIController.Instance.UpdateUI();
             if (_roleManager != null)
             {
@@ -182,7 +182,7 @@ public class PlayerInventory : NetworkBehaviour
 
         if (assignedSlot != -1)
         {
-            // 방금 아이템이 들어간 슬롯으로 현재 슬롯을 전환시켜 손에 들게 만들기 -> 이거 싫으면 위에서 그냥 리턴하게 하면 됨.
+            // 방금 아이템이 들어간 슬롯으로 현재 슬롯을 전환시켜 손에 들게 만들기
             if (_currentSlot.Value == 0)
             {
                 _currentSlot.Value = assignedSlot;

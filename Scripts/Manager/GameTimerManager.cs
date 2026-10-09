@@ -8,7 +8,7 @@ public enum TimerState { None, Ready, Playing, Expired }
 public class GameTimerManager : NetworkBehaviour
 {
     public static GameTimerManager Instance { get; private set; }
-    // 현재 타이머가 어떤 상태인지 구분하기 위한 Net변수임.
+    // 현재 타이머 상태 (네트워크 동기화)
     public NetworkVariable<TimerState> CurrentState { get; private set; } = new(TimerState.None, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
     // 오직 서버만 수정 가능한 동기화 시간 변수

@@ -281,7 +281,7 @@ public class PlayerInteraction : NetworkBehaviour
     {
         if (draggableReference.TryGet(out NetworkObject draggableNetworkObject)
             && draggableNetworkObject.TryGetComponent<DraggableObject>(out var draggable)
-            && draggable.GrabberPlayerId == NetworkObjectId) // 내가 끌고 있는 것만 해제 가능 (참고로 NetworkObjectId는 요청을 보낸 플레이어의 ID임)
+            && draggable.GrabberPlayerId == NetworkObjectId) // 내가 끌고 있는 것만 해제 가능 (NetworkObjectId는 요청을 보낸 플레이어의 ID)
         {
             draggable.StopDrag();
             GetComponent<PlayerMovement>()?.SetDraggleObject(null);
@@ -409,7 +409,7 @@ public class PlayerInteraction : NetworkBehaviour
         SetHoveredHighlight(false);
         hoveredItem = null;
 
-        // 혹시 인벤토리에 들고 있는 아이템이 있었으면 다 한번에 내려놓게 하기
+        // TODO: 디스폰 시 인벤토리에 든 아이템을 전부 내려놓기
     }
 
     private void SetHoveredHighlight(bool highlighted)
@@ -446,7 +446,7 @@ public class PlayerInteraction : NetworkBehaviour
             return;
         }
 
-        // 클라이언트가 보낸 좌표 근처 발밑에 진짜 바닥 영역(PlacementZone)이 여전히 존재하는지 확인하는 코드임ㅇㅇ
+        // 클라이언트가 보낸 좌표 발밑에 실제 바닥 영역(PlacementZone)이 여전히 있는지 확인
         PlacementZone targetZone = null;
         int zoneLayerMask = LayerMask.GetMask("PlacementZone");
 

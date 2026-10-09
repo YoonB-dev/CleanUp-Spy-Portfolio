@@ -8,7 +8,7 @@ using System.Linq;
 /// </summary>
 public static class ActiveRagdollTools
 {
-    // ── 튜닝 값 (2026-07-17 실험으로 찾은 값) ──────────────────────
+    // 튜닝 값 (2026-07-17 실험으로 찾은 값)
     // Spring 높이면 뻣뻣하게 버티고, 낮추면 갱비스트처럼 흐물거린다.
     const float SPRING = 400f;      // 자세를 되돌리려는 힘
     const float DAMPER = 30f;       // 출렁임 감쇠. 낮으면 부들부들 떤다
@@ -20,9 +20,7 @@ public static class ActiveRagdollTools
     const string BONE_FOREARM_R = "Forearm.R";
     const string SOCKET_NAME = "Socket_Prop_R";
 
-    // ──────────────────────────────────────────────────────────────
     // 1. CharacterJoint(패시브) → ConfigurableJoint(액티브) 변환
-    // ──────────────────────────────────────────────────────────────
     [MenuItem("Tools/CleanUp Mafia/1. 액티브 래그돌로 변환", false, 1)]
     static void ConvertToActiveRagdoll()
     {
@@ -68,7 +66,7 @@ public static class ActiveRagdollTools
             // 위치는 잠그고 회전만 허용
             j.xMotion = j.yMotion = j.zMotion = ConfigurableJointMotion.Locked;
 
-            // ⚠ Ragdoll Wizard가 만든 한계는 "시체가 부자연스럽게 안 꺾이게" 막는 용도라
+            // Ragdoll Wizard가 만든 한계는 "시체가 부자연스럽게 안 꺾이게" 막는 용도라
             //   swing1=0 / swing2=0 처럼 거의 잠겨 있다(우리 Prefab 실측).
             //   그대로 두면 관절이 트위스트 한 축으로만 움직여서, 어떤 각도를 줘도 같은 데로 꺾인다.
             //   액티브 래그돌은 slerpDrive(스프링)가 자세를 잡아주므로 한계는 풀어도 된다.
@@ -102,12 +100,10 @@ public static class ActiveRagdollTools
         EditorUtility.SetDirty(root);
     }
 
-    // ──────────────────────────────────────────────────────────────
     // 2. 손·발 콜라이더 추가
-    //    Ragdoll Wizard는 손도 발도 안 잡는다(작업로그 함정 19) → 발이 바닥에 묻힌다.
+    //    Ragdoll Wizard는 손도 발도 안 잡는다 → 발이 바닥에 묻힌다.
     //    Rigidbody는 안 붙인다. 콜라이더만 두면 조상 뼈(Forearm/Shin)의 Rigidbody에
     //    복합 콜라이더로 합쳐져서 한 몸으로 움직인다. 관절을 늘리는 것보다 안정적이다.
-    // ──────────────────────────────────────────────────────────────
     [MenuItem("Tools/CleanUp Mafia/2. 손·발 콜라이더 추가", false, 2)]
     static void AddHandAndFootColliders()
     {
@@ -117,7 +113,7 @@ public static class ActiveRagdollTools
         Undo.RegisterFullObjectHierarchyUndo(root, "손·발 콜라이더 추가");
         int added = 0;
 
-        // ── 손: 미튼 장갑이라 구체가 형태에 제일 가깝다 ──
+        // 손: 미튼 장갑이라 구체가 형태에 제일 가깝다
         foreach (var boneName in new[] { BONE_HAND_R, BONE_HAND_L })
         {
             var hand = FindBone(root.transform, boneName);
@@ -129,7 +125,7 @@ public static class ActiveRagdollTools
             added++;
         }
 
-        // ── 발 ──
+        // 발
         // BoxCollider엔 Rotation 항목이 없다. 박스는 항상 자기 GameObject의 축에 정렬된다.
         // 발 뼈는 크게 기울어 있어서(-70°대) 박스를 직접 붙이면 부츠와 어긋난다.
         // → 회전시킨 자식을 하나 끼우고 거기에 박스를 붙인다.
@@ -173,7 +169,7 @@ public static class ActiveRagdollTools
             if (bc == null) bc = Undo.AddComponent<BoxCollider>(go);
             else Undo.RecordObject(bc, "발 콜라이더 재계산");
 
-            // 작업로그: 모델은 발=원점(바닥). 루트 높이가 곧 발바닥이다.
+            // 모델은 발=원점(바닥). 루트 높이가 곧 발바닥이다.
             float ankleHeight = Mathf.Max(0.02f, foot.position.y - root.transform.position.y);
             Vector3 soleCenterWorld = foot.position
                                     - Vector3.up * (ankleHeight * 0.5f)
@@ -191,10 +187,8 @@ public static class ActiveRagdollTools
                   $"각도는 자식의 Transform Rotation, 크기는 Box의 Size로 손볼 것. 재실행하면 다시 계산한다.", root);
     }
 
-    // ──────────────────────────────────────────────────────────────
     // 3. 소품을 손에 미리보기로 붙이기 (물리 없음 — 회전 맞추는 단계)
-    //    ⚠ 선택할 것 = 그립 원점을 가진 자식 (총이면 'Handgun')
-    // ──────────────────────────────────────────────────────────────
+    //    선택할 것 = 그립 원점을 가진 자식 (총이면 'Handgun')
     [MenuItem("Tools/CleanUp Mafia/3. 소품 그립 — 미리보기 부착", false, 20)]
     static void AttachPropPreview()
     {
@@ -224,7 +218,7 @@ public static class ActiveRagdollTools
             return;
         }
 
-        // ⚠ 안전장치: 이미 손에 붙은 걸 다시 실행하면 "FBX 루트"를 찾다가 로봇 루트를 집어
+        // 안전장치: 이미 손에 붙은 걸 다시 실행하면 "FBX 루트"를 찾다가 로봇 루트를 집어
         // 로봇을 언팩하고 몸통 메쉬를 뜯어가는 사고가 난다. 그래서 두 겹으로 막는다.
         var fbxRoot = GetSceneRootOf(grip);
         bool alreadyAttached = grip.transform.parent != null && grip.transform.parent.name == SOCKET_NAME;
@@ -287,9 +281,7 @@ public static class ActiveRagdollTools
             $"→ 다 맞췄으면 메뉴 4번을 실행할 것.", grip);
     }
 
-    // ──────────────────────────────────────────────────────────────
     // 4. 맞춰둔 위치 그대로 물리 그립으로 전환 (FixedJoint)
-    // ──────────────────────────────────────────────────────────────
     [MenuItem("Tools/CleanUp Mafia/4. 소품 그립 — 물리 고정(FixedJoint)", false, 21)]
     static void LockPropWithJoint()
     {
@@ -352,9 +344,7 @@ public static class ActiveRagdollTools
             $"Animator를 끄고 Play할 것.", prop);
     }
 
-    // ──────────────────────────────────────────────────────────────
     // 5. 조작 세팅 — 1인칭/3인칭으로 직접 몰고 다니기
-    // ──────────────────────────────────────────────────────────────
     [MenuItem("Tools/CleanUp Mafia/5. 조작 세팅 (1인칭·3인칭)", false, 22)]
     static void SetupDriver()
     {
@@ -377,9 +367,7 @@ public static class ActiveRagdollTools
             $"조준 각도·걷기 진폭은 Play 중에 RagdollPoser Inspector에서 맞출 것.", ragdoll);
     }
 
-    // ──────────────────────────────────────────────────────────────
     // 관절 한계 토글 — Ragdoll Wizard 한계는 자세 잡기엔 너무 빡빡하다
-    // ──────────────────────────────────────────────────────────────
     [MenuItem("Tools/CleanUp Mafia/관절 한계 토글 (Free ↔ Limited)", false, 42)]
     static void ToggleJointLimits()
     {
@@ -406,13 +394,11 @@ public static class ActiveRagdollTools
             ? $"[관절 한계 Free] 관절 {joints.Length}개를 풀었다. 이제 X/Y/Z 각도가 각각 따로 먹는다.\n" +
               $"자세는 스프링이 잡아준다. 대신 무릎이 반대로 꺾일 수도 있다."
             : $"[관절 한계 Limited] 관절 {joints.Length}개를 원래 한계로 되돌렸다.\n" +
-              $"⚠ Ragdoll Wizard 한계는 swing1=0/swing2=0이라 거의 잠긴다. 자세가 다시 안 잡힐 것이다.",
+              $"Ragdoll Wizard 한계는 swing1=0/swing2=0이라 거의 잠긴다. 자세가 다시 안 잡힐 것이다.",
             ragdoll);
     }
 
-    // ──────────────────────────────────────────────────────────────
     // 힙 고정 토글 — 켜면 인형처럼 매달려 서 있고, 끄면 무너진다
-    // ──────────────────────────────────────────────────────────────
     [MenuItem("Tools/CleanUp Mafia/힙 고정 토글 (퍼펫 모드)", false, 40)]
     static void ToggleHipAnchor()
     {
@@ -431,9 +417,7 @@ public static class ActiveRagdollTools
             : "[퍼펫 모드 OFF] 힙이 풀렸다. 균형 제어가 없으니 결국 쓰러진다(갱비스트도 그렇다).", rb);
     }
 
-    // ──────────────────────────────────────────────────────────────
     // 복구 — 3번 메뉴 옛 버그로 로봇 밖으로 뜯겨나간 메쉬를 되돌린다
-    // ──────────────────────────────────────────────────────────────
     [MenuItem("Tools/CleanUp Mafia/Hierarchy 복구 (뜯겨나간 메쉬 되돌리기)", false, 60)]
     static void RepairHierarchy()
     {
@@ -461,7 +445,7 @@ public static class ActiveRagdollTools
                       $"스킨드 메쉬는 뼈를 따라 그려지므로 겉보기는 안 변한다.", ragdoll);
     }
 
-    // ── 헬퍼 ─────────────────────────────────────────────────────
+    // 헬퍼
     static GameObject RequireSelectedRoot()
     {
         var go = Selection.activeGameObject;
