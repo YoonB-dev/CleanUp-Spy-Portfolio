@@ -28,6 +28,8 @@ public class MafiaPaintAction : NetworkBehaviour
     [SerializeField] private float rechargeDelay = 1.0f; // 재사용 딜레이
     // 서버 측 패킷 연사 방지용 타임스탬프
     private float _serverNextFireTime;
+    // 서버 사거리 검증 여유. 요청이 도착하는 동안 플레이어가 움직인 거리만큼 봐준다
+    private const float RANGE_TOLERANCE = 1f;
     // ===== 네트워크 상태 변수 (0.0 ~ 1.0 범위) =====
     private readonly NetworkVariable<float> _currentPaint = new(
         1.0f,
@@ -292,17 +294,21 @@ public class MafiaPaintAction : NetworkBehaviour
         var paintable = hit.collider.GetComponent<PaintableSurface>();
         if (paintable == null) return;
 
-        // 브러시는 월드 좌표 기준으로 그리므로 맞은 지점(월드)을 보낸다
-        RequestPaintServerRpc(paintable.SurfaceId, hit.point, brushRadius);
+        // 브러시는 월드 좌표 기준으로 그리므로 맞은 지점(월드)을 보낸다. 반경은 서버가 정한다
+        RequestPaintServerRpc(paintable.SurfaceId, hit.point);
     }
 
     [ServerRpc]
-    private void RequestPaintServerRpc(int surfaceId, Vector3 point, float radius)
+    private void RequestPaintServerRpc(int surfaceId, Vector3 point)
     {
         // 총을 꺼낸 마피아만 칠할 수 있음(치트 방어)
         if (_roleManager == null || _roleManager.CurrentRole != PlayerRole.Mafia) return;
         if (!_gate.CanDo(PlayerAction.FirePaint)) return;
         if (_currentPaint.Value <= 0f) return;
+
+        // 클라이언트가 보낸 지점이 사거리 안인지 서버 시점에서 다시 확인
+        Vector3 origin = _playerCamera != null ? _playerCamera.transform.position : transform.position;
+        if (Vector3.Distance(origin, point) > fireRange + RANGE_TOLERANCE) return;
 
         // 3. 서버 측 발사 빈도(Cooltime) 검증 (클라이언트 연사 연동 방어)
         if (Time.time < _serverNextFireTime) return;
@@ -311,8 +317,8 @@ public class MafiaPaintAction : NetworkBehaviour
         // 4. 현재 슬롯 및 발사 상태(SetFiringServerRpc) 재확인
         if (_inventory == null || _inventory.CurrentSlot != PlayerActionGate.PAINT_GUN_SLOT || !_isFiring) return;
 
-        // 모든 검증 통과 시 클라이언트에 그리기 전파
-        ApplyPaintClientRpc(surfaceId, point, radius);
+        // 모든 검증 통과 시 클라이언트에 그리기 전파 (반경은 서버 설정값)
+        ApplyPaintClientRpc(surfaceId, point, brushRadius);
     }
 
     [ClientRpc]

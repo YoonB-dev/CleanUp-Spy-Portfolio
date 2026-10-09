@@ -16,6 +16,9 @@ public class PaintCleaner : NetworkBehaviour
     [SerializeField] private float brushRadius = 0.3f;
     [SerializeField] private LayerMask paintableLayers;
 
+    // 서버 사거리 검증 여유. 요청이 도착하는 동안 플레이어가 움직인 거리만큼 봐준다
+    private const float RANGE_TOLERANCE = 1f;
+
     private PickupItem _pickupItem;
     private PlayerInteraction _localPlayer; // 현재 나를 들고 있는 주인
     private Camera _playerCamera;
@@ -82,12 +85,12 @@ public class PaintCleaner : NetworkBehaviour
         var paintable = hit.collider.GetComponent<PaintableSurface>();
         if (paintable == null) return;
 
-        // 브러시는 월드 좌표 기준으로 그리므로 맞은 지점(월드)을 보낸다
-        RequestCleanServerRpc(paintable.SurfaceId, hit.point, brushRadius);
+        // 브러시는 월드 좌표 기준으로 그리므로 맞은 지점(월드)을 보낸다. 반경은 서버가 정한다
+        RequestCleanServerRpc(paintable.SurfaceId, hit.point);
     }
 
     [ServerRpc]
-    private void RequestCleanServerRpc(int surfaceId, Vector3 point, float radius, ServerRpcParams rpcParams = default)
+    private void RequestCleanServerRpc(int surfaceId, Vector3 point, ServerRpcParams rpcParams = default)
     {
         if (!IsServer) return;
 
@@ -100,7 +103,12 @@ public class PaintCleaner : NetworkBehaviour
         }
         if (holder.Inventory != null && holder.Inventory.CurrentSlot == 4) return;
 
-        ApplyCleanClientRpc(surfaceId, point, radius);
+        // 클라이언트가 보낸 지점이 사거리 안인지 서버 시점에서 다시 확인
+        Vector3 origin = holder.PlayerCamera != null ? holder.PlayerCamera.transform.position : holder.transform.position;
+        if (Vector3.Distance(origin, point) > cleanRange + RANGE_TOLERANCE) return;
+
+        // 반경은 클라이언트 값을 받지 않고 서버 설정값을 쓴다
+        ApplyCleanClientRpc(surfaceId, point, brushRadius);
     }
 
     [ClientRpc]
