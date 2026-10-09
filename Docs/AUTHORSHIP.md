@@ -1,6 +1,6 @@
 # 작성자 구분 (Authorship)
 
-이 레포의 `Scripts/`는 팀 프로젝트의 스크립트 폴더를 그대로 가져온 것입니다(`git subtree`). 팀원의 코드도 함께 들어 있으므로, 제가 작성한 코드를 이 문서에 구분해 둡니다.
+이 레포의 `Scripts/`는 팀 프로젝트의 스크립트 폴더를 그대로 가져온 것입니다(`git subtree`). 팀원의 코드도 함께 들어 있으므로, 제가 작성한 코드를 이 문서에 구분해 둡니다. 레포 루트의 `Shaders/`는 메인 프로젝트에서 따로 복사한 제 셰이더입니다.
 
 - 팀 구성: 클라이언트 프로그래머 2명(이윤형, 김도환), 모델러 1명
 - 기준 시점: 메인 레포 split 커밋 `c8a2c15`
@@ -33,7 +33,7 @@
 
 | 시스템 | 만든 내용 | 파일 |
 |---|---|---|
-| 페인트·오염도 | 원본 머테리얼을 건드리지 않는 페인트 오버레이를 어떤 메시에든 붙일 수 있게 만들었습니다. 브러시는 월드 좌표·미터 단위로 칠하고 지웁니다. 칠하기 요청은 서버가 검증한 뒤 전파하고, 서버에서만 GPU readback으로 칠해진 실제 면적을 계산합니다 | `Item/PaintGun/PaintableSurface.cs`, `PaintSurfaceManager.cs`, `PaintCleaner.cs`, `Player/Mafia/MafiaPaintAction.cs`, `UI/PaintGaugeUI.cs` |
+| 페인트·오염도 | 원본 머테리얼을 건드리지 않는 페인트 오버레이를 어떤 메시에든 붙일 수 있게 만들었습니다. 브러시는 월드 좌표·미터 단위로 칠하고 지웁니다. 칠하기 요청은 서버가 검증한 뒤 전파하고, 서버에서만 GPU readback으로 칠해진 실제 면적을 계산합니다 | `Item/PaintGun/PaintableSurface.cs`, `PaintSurfaceManager.cs`, `PaintCleaner.cs`, `Player/Mafia/MafiaPaintAction.cs`, `UI/PaintGaugeUI.cs`, 레포 루트 `Shaders/Paint/` (`PaintBrush`, `PaintOverlayURP`) |
 | 아이템 상호작용·인벤토리 | 줍기·버리기·던지기, 서버 권위 인벤토리 슬롯, 끌기 오브젝트를 만들었습니다. 아이템 사용은 공통 인터페이스(`IUsableItem`)로 묶었습니다 | `Player/PlayerInteraction.cs`, `Player/PlayerInventory.cs`, `Item/PickupItem.cs`, `Item/PickupHighlight.cs`, `Item/ItemData.cs`, `Item/Interface/` (`IUsableItem`, `PickupContracts`, `ZoomableItem`, `DraggableObject`, `CarryGripPoints`), `InventoryUIController.cs`, `Player/ThrowGaugeUI.cs` |
 | 도구 아이템 | 테이저건(서버 탄약·발사 간격 검증, 피격 시 감전 둔화와 탄 박힘 연출), 흡입기, 폴라로이드 카메라(뷰파인더 렌더링, 사진 JPG 전송) | `Item/TaserGun/` (`TaserGun`, `TaserBullet`, `PlayerTaserStuck`), `Item/MagnetAttractor.cs`, `PolaroidCamera/` (`PolaroidCamera`, `Photo`) |
 | 쓰레기·상자 배치 | ScriptableObject 기반 쓰레기 데이터, 마피아 쓰레기 생성, 쓰레기통 처리, 상자 배치 프리뷰와 서버 재검증 | `Trash/` (`TrashData`, `TrashObject`), `Item/TrashCan/TrashCan.cs`, `Player/Mafia/MafiaActionTrash.cs`, `Item/PlaceableBox.cs`, `BoxPlacementPreview.cs`, `PlacementValidator.cs`, `PlacementZone.cs` |
