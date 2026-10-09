@@ -18,6 +18,10 @@ public class TaserGun : NetworkBehaviour, IUsableItem
     );
 
     public int CurrentAmmo => _currentAmmo.Value;
+    public int MaxAmmo => maxAmmo;
+
+    // (현재 탄약, 최대 탄약) - 서버/클라이언트 모두에서 호출됨
+    public event System.Action<int, int> AmmoChanged;
 
     private PickupItem _thisPickupItem;
     private float _nextFireTime;
@@ -34,6 +38,17 @@ public class TaserGun : NetworkBehaviour, IUsableItem
         {
             _currentAmmo.Value = maxAmmo;
         }
+        _currentAmmo.OnValueChanged += HandleAmmoChanged;
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        _currentAmmo.OnValueChanged -= HandleAmmoChanged;
+    }
+
+    private void HandleAmmoChanged(int previous, int current)
+    {
+        AmmoChanged?.Invoke(current, maxAmmo);
     }
 
     // PlayerInteraction으로부터 context와 본인의 playerCamera를 넘겨받음
