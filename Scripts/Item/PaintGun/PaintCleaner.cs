@@ -7,7 +7,7 @@ using UnityEngine.InputSystem;
 /// PickupItem에 의해 들려있는 상태에서만 발사(청소) 입력을 감지하고 작동한다.
 /// </summary>
 [RequireComponent(typeof(PickupItem))]
-public class PaintCleaner : NetworkBehaviour
+public class PaintCleaner : NetworkBehaviour, IUsableItem
 {
     [Header("Settings")]
     [SerializeField] private float cleanRange = 3f;
@@ -64,11 +64,12 @@ public class PaintCleaner : NetworkBehaviour
     }
 
     /// <summary>
-    /// PlayerInteraction의 Input Action 이벤트(OnClean)에서 호출한다.
+    /// 좌클릭 사용 입력. 누르고 있는 동안 청소한다 (PlayerInteraction.OnUseItem에서 호출)
     /// </summary>
-    public void SetCleaningInput(bool isPressing)
+    public void OnUse(InputAction.CallbackContext context, Camera playerCamera)
     {
-        _isCleaning = isPressing;
+        if (context.performed) _isCleaning = true;
+        else if (context.canceled) _isCleaning = false;
     }
 
     private void CleanPaint()

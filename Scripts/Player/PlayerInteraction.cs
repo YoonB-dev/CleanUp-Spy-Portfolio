@@ -513,23 +513,7 @@ public class PlayerInteraction : NetworkBehaviour
         return _inventory.GetCurrentEquippedItem();
     }
 
-    // 청소 도구
-    public void OnClean(InputAction.CallbackContext context)
-    {
-        if (!IsOwner) return;
-        // 끄는 입력은 항상 통과시켜야 상태가 켜진 채로 남지 않는다
-        if (context.performed && !_gate.CanDo(PlayerAction.UseTool)) return;
-        if (!IsHoldingItem()) return;
-        // '청소 도구'인지 확인
-        var heldItem = GetCurrentHeldItem();
-        if (heldItem != null && heldItem.TryGetComponent<PaintCleaner>(out var cleaner))
-        {
-            if (context.performed) cleaner.SetCleaningInput(true);
-            else if (context.canceled) cleaner.SetCleaningInput(false);
-        }
-    }
-
-    // 폴라로이드 카메라
+    // 조준 가능한 아이템 (폴라로이드 카메라 등)
     public void OnAim(InputAction.CallbackContext context)
     {
         if (!IsOwner) return;
@@ -547,9 +531,9 @@ public class PlayerInteraction : NetworkBehaviour
         if (!context.performed) return;
         if (!_gate.CanDo(PlayerAction.UseTool)) return;
         var heldItem = GetCurrentHeldItem();
-        if (heldItem == null || !heldItem.TryGetComponent<PolaroidCamera>(out var cameraTool)) return;
+        if (heldItem == null || !heldItem.TryGetComponent<ICaptureTool>(out var captureTool)) return;
 
-        cameraTool.Capture();
+        captureTool.Capture();
     }
     // 두꺼비집 동작 콜백
     public void OnToggleLight(InputAction.CallbackContext context)
@@ -617,7 +601,7 @@ public class PlayerInteraction : NetworkBehaviour
 
     #endregion
 
-    #region 아이템 사용 통합 처리 (IUsableItem 인터페이스) -> 흡입기, 테이저건
+    #region 아이템 사용 통합 처리 (IUsableItem 인터페이스) -> 흡입기, 테이저건, 청소 도구
     /// <summary>
     /// 마우스 좌클릭 통합 입력 콜백 (Input Action: UseItem 에 바인딩)
     /// </summary>
@@ -625,14 +609,14 @@ public class PlayerInteraction : NetworkBehaviour
     {
         if (!IsOwner) return;
 
-        // 1. 행동 가능 여부(게이트) 검사
+        // 1. 행동 가능 여부(게이트) 검사. 떼는 입력은 항상 통과시켜야 사용 상태가 켜진 채로 남지 않는다
         if (context.performed && !_gate.CanDo(PlayerAction.UseTool)) return;
 
         // 2. PlayerInventory를 통해 현재 장착한 아이템 가져오기
         PickupItem currentItem = _inventory.GetCurrentEquippedItem();
         if (currentItem == null) return;
 
-        // 3. IUsableItem 인터페이스가 존재하면 OnUse 호출 (테이저건, 흡입기, 카메라 등 일률 적용)
+        // 3. IUsableItem 인터페이스가 존재하면 OnUse 호출 (테이저건, 흡입기, 청소 도구)
         if (currentItem.TryGetComponent<IUsableItem>(out var usableItem))
         {
             usableItem.OnUse(context, playerCamera);
